@@ -1,6 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  BookOpenCheck,
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  ClipboardCheck,
+  Clock3,
+  Cloud,
+  Gauge,
+  Globe2,
+  GraduationCap,
+  Layers3,
+  RotateCcw,
+  ShieldCheck,
+  Target,
+  Trophy,
+  XCircle
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import training from "../data/training.json";
 
 type Locale = "fr" | "en";
@@ -37,6 +55,16 @@ type Level = {
   quiz: Question[];
 };
 
+type ProgressSnapshot = {
+  answers?: Record<string, number>;
+  completedModules?: Record<string, boolean>;
+  levelId?: string;
+  locale?: Locale;
+  submittedLevels?: Record<string, boolean>;
+};
+
+const STORAGE_KEY = "cloud-cert-progress-v2";
+
 const content = training as {
   meta: {
     title: Localized;
@@ -53,30 +81,53 @@ const content = training as {
 
 const copy = {
   fr: {
+    academy: "Cloud Cert",
     language: "Langue",
     level: "Niveau",
-    duration: "Duree",
+    duration: "Durée",
     modules: "Modules",
     quiz: "Quiz",
     progress: "Progression",
     source: "Base du parcours",
     objective: "Objectif",
-    keyPoints: "Points cles",
-    practice: "Exercice conseille",
+    keyPoints: "Points clés",
+    practice: "Lab conseillé",
     tips: "Conseils terrain",
     capstone: "Projet final",
-    answer: "Repondre",
-    reset: "Recommencer",
+    answer: "Valider le quiz",
+    reset: "Réinitialiser le quiz",
+    resetAll: "Tout réinitialiser",
     score: "Score",
-    selected: "Choisi",
-    chooseLevel: "Choisis un niveau",
-    pass: "Valide",
-    improve: "A revoir",
+    selected: "Sélectionné",
+    chooseLevel: "Niveaux",
+    pass: "Validé",
+    improve: "À revoir",
     deliverables: "Livrables",
     beginnerPath: "Commencer ici",
-    quizIntro: "Valide ta comprehension avant de passer au niveau suivant."
+    quizIntro: "Valide ta compréhension avant de passer au niveau suivant.",
+    readiness: "Indice de préparation",
+    moduleDone: "Module terminé",
+    moduleOpen: "À traiter",
+    markDone: "Marquer comme terminé",
+    markUndone: "Marquer à revoir",
+    answered: "répondues",
+    unanswered: "questions restantes",
+    lockedScore: "Réponds à toutes les questions",
+    nextFocus: "Prochain focus",
+    studyPlan: "Plan d'étude",
+    mastery: "Maîtrise",
+    completed: "terminés",
+    checkpoint: "Checkpoint",
+    quizReady: "Prêt à valider",
+    quizPending: "Quiz incomplet",
+    topology: "Topologie cible",
+    emptyFocus: "Tous les modules du niveau sont marqués.",
+    current: "En cours",
+    complete: "Complet",
+    saved: "Progression sauvegardée"
   },
   en: {
+    academy: "Cloud Cert",
     language: "Language",
     level: "Level",
     duration: "Duration",
@@ -86,21 +137,176 @@ const copy = {
     source: "Path basis",
     objective: "Objective",
     keyPoints: "Key points",
-    practice: "Suggested exercise",
+    practice: "Suggested lab",
     tips: "Field tips",
     capstone: "Final project",
-    answer: "Answer",
-    reset: "Reset",
+    answer: "Submit quiz",
+    reset: "Reset quiz",
+    resetAll: "Reset all",
     score: "Score",
     selected: "Selected",
-    chooseLevel: "Choose a level",
+    chooseLevel: "Levels",
     pass: "Passed",
     improve: "Review needed",
     deliverables: "Deliverables",
     beginnerPath: "Start here",
-    quizIntro: "Validate your understanding before moving to the next level."
+    quizIntro: "Validate your understanding before moving to the next level.",
+    readiness: "Readiness index",
+    moduleDone: "Module done",
+    moduleOpen: "To cover",
+    markDone: "Mark complete",
+    markUndone: "Mark for review",
+    answered: "answered",
+    unanswered: "questions left",
+    lockedScore: "Answer every question",
+    nextFocus: "Next focus",
+    studyPlan: "Study plan",
+    mastery: "Mastery",
+    completed: "completed",
+    checkpoint: "Checkpoint",
+    quizReady: "Ready to submit",
+    quizPending: "Quiz incomplete",
+    topology: "Target topology",
+    emptyFocus: "All modules in this level are marked.",
+    current: "In progress",
+    complete: "Complete",
+    saved: "Progress saved"
   }
-};
+} as const;
+
+const frenchTextFixes: Array<[RegExp, string]> = [
+  [/Ã©/g, "é"],
+  [/Ã¨/g, "è"],
+  [/Ãª/g, "ê"],
+  [/Ã«/g, "ë"],
+  [/Ã /g, "à"],
+  [/Ã¢/g, "â"],
+  [/Ã§/g, "ç"],
+  [/Ã®/g, "î"],
+  [/Ã¯/g, "ï"],
+  [/Ã´/g, "ô"],
+  [/Ã¹/g, "ù"],
+  [/Ã»/g, "û"],
+  [/\bIngenieur\b/g, "Ingénieur"],
+  [/\bReseau\b/g, "Réseau"],
+  [/\breseau\b/g, "réseau"],
+  [/\breseaux\b/g, "réseaux"],
+  [/\bDebutant\b/g, "Débutant"],
+  [/\bAvance\b/g, "Avancé"],
+  [/\bDuree\b/g, "Durée"],
+  [/\bcomprehension\b/g, "compréhension"],
+  [/\bsecurise\b/g, "sécurisé"],
+  [/\bsecurisee\b/g, "sécurisée"],
+  [/\bsecurite\b/g, "sécurité"],
+  [/\borganise\b/g, "organisé"],
+  [/\bhierarchie\b/g, "hiérarchie"],
+  [/\bunite\b/g, "unité"],
+  [/\bcreation\b/g, "création"],
+  [/\bgenere\b/g, "généré"],
+  [/\brepere\b/g, "repère"],
+  [/\bCree\b/g, "Crée"],
+  [/\bcree\b/g, "crée"],
+  [/\bdebutant\b/g, "débutant"],
+  [/\bQuel role\b/g, "Quel rôle"],
+  [/\bdistribue\b/g, "distribué"],
+  [/\bechelle\b/g, "échelle"],
+  [/\bstructure\b/g, "structuré"],
+  [/\bprives\b/g, "privés"],
+  [/\bprivee\b/g, "privée"],
+  [/\bprecise\b/g, "précis"],
+  [/\bcontrole\b/g, "contrôle"],
+  [/\broles\b/g, "rôles"],
+  [/\bprecis\b/g, "précis"],
+  [/\bprivilege\b/g, "privilège"],
+  [/\bnecessaires\b/g, "nécessaires"],
+  [/\btolerance\b/g, "tolérance"],
+  [/\bregionaux\b/g, "régionaux"],
+  [/\bregionale\b/g, "régionale"],
+  [/\bregional\b/g, "régional"],
+  [/\bregions\b/g, "régions"],
+  [/\bregion\b/g, "région"],
+  [/\bsysteme\b/g, "système"],
+  [/\bmeme\b/g, "même"],
+  [/\bcreer\b/g, "créer"],
+  [/\bconnectee\b/g, "connectée"],
+  [/\bspecifique\b/g, "spécifique"],
+  [/\bnomme\b/g, "nommé"],
+  [/\bverifie\b/g, "vérifie"],
+  [/\bdifference\b/g, "différence"],
+  [/\breduit\b/g, "réduit"],
+  [/\bcout\b/g, "coût"],
+  [/\bdonnees\b/g, "données"],
+  [/\bconsultees\b/g, "consultées"],
+  [/\badapte\b/g, "adapté"],
+  [/\bmanagée\b/g, "managée"],
+  [/\bmanagÃ©e\b/g, "managée"],
+  [/\bdeclenchee\b/g, "déclenchée"],
+  [/\bdeclencheur\b/g, "déclencheur"],
+  [/\bevenement\b/g, "événement"],
+  [/\bevenementiel\b/g, "événementiel"],
+  [/\bconteneurisee\b/g, "conteneurisée"],
+  [/\bintegre\b/g, "intègre"],
+  [/\bmetriques\b/g, "métriques"],
+  [/\bautorises\b/g, "autorisés"],
+  [/\bautorisees\b/g, "autorisées"],
+  [/\bprotege\b/g, "protège"],
+  [/\badaptee\b/g, "adaptée"],
+  [/\bregle\b/g, "règle"],
+  [/\bregles\b/g, "règles"],
+  [/\bgerer\b/g, "gérer"],
+  [/\bgeres\b/g, "gérés"],
+  [/\bgerée\b/g, "gérée"],
+  [/\bpriorite\b/g, "priorité"],
+  [/\bpriorites\b/g, "priorités"],
+  [/\bhierarchique\b/g, "hiérarchique"],
+  [/\bhierarchiques\b/g, "hiérarchiques"],
+  [/\bprive\b/g, "privé"],
+  [/\bprivees\b/g, "privées"],
+  [/\bconnectivite\b/g, "connectivité"],
+  [/\bcontrole\b/g, "contrôle"],
+  [/\bcontroleur\b/g, "contrôleur"],
+  [/\blegitime\b/g, "légitime"],
+  [/\boperation\b/g, "opération"],
+  [/\boperations\b/g, "opérations"],
+  [/\bmetadonnee\b/g, "métadonnée"],
+  [/\bmetadata\b/g, "metadata"],
+  [/\bdebit\b/g, "débit"],
+  [/\bpaquets\b/g, "paquets"],
+  [/\bverification\b/g, "vérification"],
+  [/\bverifier\b/g, "vérifier"],
+  [/\bou le trafic\b/g, "où le trafic"],
+  [/\bou il\b/g, "où il"],
+  [/\ba 6/g, "à 6"],
+  [/\ba 8/g, "à 8"],
+  [/\ba 10/g, "à 10"],
+  [/\ba 14/g, "à 14"],
+  [/\ba une\b/g, "à une"],
+  [/\ba un\b/g, "à un"],
+  [/\ba des\b/g, "à des"],
+  [/\ba Cloud\b/g, "à Cloud"],
+  [/\ba la\b/g, "à la"],
+  [/\ba l'/g, "à l'"],
+  [/\ba partir\b/g, "à partir"],
+  [/\ba tres\b/g, "à très"],
+  [/\btres\b/g, "très"],
+  [/\bpres\b/g, "près"],
+  [/\bplutot\b/g, "plutôt"],
+  [/\bdefaut\b/g, "défaut"],
+  [/\baffichee\b/g, "affichée"],
+  [/\bevaluees\b/g, "évaluées"],
+  [/\bdeploies\b/g, "déploies"],
+  [/\bEcris\b/g, "Écris"],
+  [/\bRedige\b/g, "Rédige"],
+  [/\bConçois\b/g, "Conçois"],
+  [/\bautorises\b/g, "autorisés"],
+  [/\bseulement si\b/g, "seulement si"]
+];
+
+function polishFrench(value: string) {
+  return frenchTextFixes.reduce((current, [pattern, replacement]) => {
+    return current.replace(pattern, replacement);
+  }, value);
+}
 
 function getAnswerState(
   selected: number | undefined,
@@ -123,30 +329,134 @@ function getAnswerState(
   return "idle";
 }
 
+function isLocale(value: unknown): value is Locale {
+  return value === "fr" || value === "en";
+}
+
 export default function LearningApp() {
   const [locale, setLocale] = useState<Locale>("fr");
   const [levelId, setLevelId] = useState(content.levels[0].id);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
+  const [submittedLevels, setSubmittedLevels] = useState<Record<string, boolean>>({});
+  const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
 
   const t = copy[locale];
+
   const activeLevel = useMemo(
     () => content.levels.find((level) => level.id === levelId) ?? content.levels[0],
     [levelId]
   );
 
-  const score = activeLevel.quiz.reduce((total, question) => {
-    return total + (answers[question.id] === question.answer ? 1 : 0);
-  }, 0);
-  const scorePercent = Math.round((score / activeLevel.quiz.length) * 100);
+  const text = (value: string) => (locale === "fr" ? polishFrench(value) : value);
 
-  const completedLevels = content.levels.filter((level) => {
-    return level.quiz.every((question) => answers[question.id] === question.answer);
-  }).length;
+  const levelSummaries = useMemo(() => {
+    return content.levels.map((level) => {
+      const moduleDone = level.modules.filter((module) => completedModules[module.id]).length;
+      const answered = level.quiz.filter((question) => answers[question.id] !== undefined).length;
+      const score = level.quiz.reduce((total, question) => {
+        return total + (answers[question.id] === question.answer ? 1 : 0);
+      }, 0);
+      const submitted = Boolean(submittedLevels[level.id]);
+      const quizPercent = level.quiz.length > 0 ? Math.round((score / level.quiz.length) * 100) : 0;
+      const modulePercent =
+        level.modules.length > 0 ? Math.round((moduleDone / level.modules.length) * 100) : 0;
+      const complete = moduleDone === level.modules.length && submitted && quizPercent >= 70;
+      const progress = Math.round(modulePercent * 0.55 + (submitted ? quizPercent : answered * 10) * 0.45);
+
+      return {
+        answered,
+        complete,
+        id: level.id,
+        moduleDone,
+        modulePercent,
+        progress: Math.min(progress, 100),
+        quizPercent,
+        score,
+        submitted
+      };
+    });
+  }, [answers, completedModules, submittedLevels]);
+
+  const currentSummary =
+    levelSummaries.find((summary) => summary.id === activeLevel.id) ?? levelSummaries[0];
+  const currentSubmitted = Boolean(submittedLevels[activeLevel.id]);
+  const answeredCurrent = currentSummary?.answered ?? 0;
+  const score = currentSummary?.score ?? 0;
+  const scorePercent = currentSummary?.quizPercent ?? 0;
+  const unanswered = activeLevel.quiz.length - answeredCurrent;
+
+  const totalModules = content.levels.reduce((total, level) => total + level.modules.length, 0);
+  const completedModuleCount = content.levels.reduce((total, level) => {
+    return total + level.modules.filter((module) => completedModules[module.id]).length;
+  }, 0);
+  const totalQuestions = content.levels.reduce((total, level) => total + level.quiz.length, 0);
+  const correctAnswers = content.levels.reduce((total, level) => {
+    return (
+      total +
+      level.quiz.reduce((quizTotal, question) => {
+        return quizTotal + (answers[question.id] === question.answer ? 1 : 0);
+      }, 0)
+    );
+  }, 0);
+  const readiness = Math.round(
+    (completedModuleCount / totalModules) * 60 + (correctAnswers / totalQuestions) * 40
+  );
+  const completedLevels = levelSummaries.filter((summary) => summary.complete).length;
+  const nextModule = activeLevel.modules.find((module) => !completedModules[module.id]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    // Browser storage is unavailable during SSR, so saved progress is restored after mount.
+    try {
+      const rawProgress = window.localStorage.getItem(STORAGE_KEY);
+
+      if (rawProgress) {
+        const parsed = JSON.parse(rawProgress) as ProgressSnapshot;
+        const savedLevelExists = content.levels.some((level) => level.id === parsed.levelId);
+
+        setAnswers(parsed.answers ?? {});
+        setCompletedModules(parsed.completedModules ?? {});
+        setSubmittedLevels(parsed.submittedLevels ?? {});
+
+        if (savedLevelExists && parsed.levelId) {
+          setLevelId(parsed.levelId);
+        }
+
+        if (isLocale(parsed.locale)) {
+          setLocale(parsed.locale);
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setHasLoadedProgress(true);
+    }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  useEffect(() => {
+    if (!hasLoadedProgress) {
+      return;
+    }
+
+    const snapshot: ProgressSnapshot = {
+      answers,
+      completedModules,
+      levelId,
+      locale,
+      submittedLevels
+    };
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  }, [answers, completedModules, hasLoadedProgress, levelId, locale, submittedLevels]);
 
   function selectLevel(nextLevelId: string) {
     setLevelId(nextLevelId);
-    setSubmitted(false);
   }
 
   function selectAnswer(questionId: string, answerIndex: number) {
@@ -156,27 +466,67 @@ export default function LearningApp() {
     }));
   }
 
+  function submitQuiz() {
+    if (unanswered > 0) {
+      return;
+    }
+
+    setSubmittedLevels((current) => ({
+      ...current,
+      [activeLevel.id]: true
+    }));
+  }
+
   function resetQuiz() {
     const nextAnswers = { ...answers };
+
     for (const question of activeLevel.quiz) {
       delete nextAnswers[question.id];
     }
+
     setAnswers(nextAnswers);
-    setSubmitted(false);
+    setSubmittedLevels((current) => ({
+      ...current,
+      [activeLevel.id]: false
+    }));
+  }
+
+  function resetAllProgress() {
+    setAnswers({});
+    setCompletedModules({});
+    setSubmittedLevels({});
+  }
+
+  function toggleModule(moduleId: string) {
+    setCompletedModules((current) => ({
+      ...current,
+      [moduleId]: !current[moduleId]
+    }));
   }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand" aria-label={content.meta.title[locale]}>
-          <span className="brand-mark">N</span>
-          <span>{content.meta.title[locale]}</span>
+        <div className="brand" aria-label={text(content.meta.title[locale])}>
+          <span className="brand-mark" aria-hidden="true">
+            <Cloud size={20} strokeWidth={2.5} />
+          </span>
+          <span className="brand-copy">
+            <span>{t.academy}</span>
+            <strong>{text(content.meta.title[locale])}</strong>
+          </span>
         </div>
+
         <div className="toolbar">
-          <span className="sidebar-title">{t.language}</span>
+          <div className="readiness-chip" aria-label={`${t.readiness}: ${readiness}%`}>
+            <Gauge size={16} aria-hidden="true" />
+            <span>{readiness}%</span>
+          </div>
+          <span className="toolbar-label">{t.language}</span>
           <div className="segmented" aria-label={t.language}>
             <button
               type="button"
+              aria-pressed={locale === "fr"}
               data-active={locale === "fr"}
               onClick={() => setLocale("fr")}
             >
@@ -184,6 +534,7 @@ export default function LearningApp() {
             </button>
             <button
               type="button"
+              aria-pressed={locale === "en"}
               data-active={locale === "en"}
               onClick={() => setLocale("en")}
             >
@@ -194,144 +545,303 @@ export default function LearningApp() {
       </header>
 
       <div className="layout">
-        <aside className="sidebar">
-          <p className="sidebar-title">{t.chooseLevel}</p>
-          <div className="level-nav">
-            {content.levels.map((level) => (
-              <button
-                className="level-button"
-                data-active={level.id === activeLevel.id}
-                key={level.id}
-                onClick={() => selectLevel(level.id)}
-                type="button"
-              >
-                <span>
-                  <strong>{level.name[locale]}</strong>
-                  {level.duration[locale]}
-                </span>
-                <span className="pill">{level.rank}</span>
-              </button>
-            ))}
+        <aside className="sidebar" aria-label={t.chooseLevel}>
+          <div className="sidebar-header">
+            <p className="sidebar-title">{t.studyPlan}</p>
+            <span className="sidebar-count">
+              {completedLevels}/{content.levels.length}
+            </span>
+          </div>
+
+          <nav className="level-nav">
+            {content.levels.map((level) => {
+              const summary = levelSummaries.find((item) => item.id === level.id);
+              const isActive = level.id === activeLevel.id;
+              const isComplete = Boolean(summary?.complete);
+
+              return (
+                <button
+                  className="level-button"
+                  data-active={isActive}
+                  data-complete={isComplete}
+                  aria-current={isActive ? "step" : undefined}
+                  key={level.id}
+                  onClick={() => selectLevel(level.id)}
+                  type="button"
+                >
+                  <span className="level-index">{level.rank}</span>
+                  <span className="level-copy">
+                    <strong>{text(level.name[locale])}</strong>
+                    <span>{text(level.duration[locale])}</span>
+                  </span>
+                  {isComplete ? (
+                    <CheckCircle2 className="level-icon" size={18} aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="level-icon" size={18} aria-hidden="true" />
+                  )}
+                  <span className="level-progress" aria-hidden="true">
+                    <span style={{ width: `${summary?.progress ?? 0}%` }} />
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="sidebar-metrics" aria-label={t.progress}>
+            <div>
+              <span>{t.modules}</span>
+              <strong>
+                {completedModuleCount}/{totalModules}
+              </strong>
+            </div>
+            <div>
+              <span>{t.quiz}</span>
+              <strong>
+                {correctAnswers}/{totalQuestions}
+              </strong>
+            </div>
           </div>
         </aside>
 
         <main className="main">
           <section className="hero" aria-labelledby="page-title">
             <div className="hero-copy">
-              <p className="eyebrow">Google Cloud Network Engineering</p>
-              <h1 id="page-title">{content.meta.title[locale]}</h1>
-              <p className="lead">{content.meta.subtitle[locale]}</p>
+              <p className="eyebrow">
+                <ShieldCheck size={15} aria-hidden="true" />
+                Google Cloud Network Engineering
+              </p>
+              <h1 id="page-title">{text(content.meta.title[locale])}</h1>
+              <p className="lead">{text(content.meta.subtitle[locale])}</p>
+
+              <div className="hero-actions">
+                <a className="primary-link" href="#modules">
+                  <Layers3 size={17} aria-hidden="true" />
+                  {t.modules}
+                </a>
+                <a className="secondary-link" href="#quiz">
+                  <ClipboardCheck size={17} aria-hidden="true" />
+                  {t.quiz}
+                </a>
+              </div>
             </div>
-            <div className="status-panel" aria-label={t.progress}>
-              <div className="metric">
-                <span>{t.level}</span>
-                <strong>{activeLevel.name[locale]}</strong>
+
+            <div className="status-panel" aria-label={t.progress} aria-live="polite">
+              <div className="topology-card" aria-label={t.topology}>
+                <span className="topology-title">{t.topology}</span>
+                <div className="topology-map" aria-hidden="true">
+                  <span className="topology-line line-one" />
+                  <span className="topology-line line-two" />
+                  <span className="node node-dns">DNS</span>
+                  <span className="node node-cdn">CDN</span>
+                  <span className="node node-lb">LB</span>
+                  <span className="node node-vpc">VPC</span>
+                  <span className="node node-iam">IAM</span>
+                </div>
               </div>
-              <div className="metric">
-                <span>{t.duration}</span>
-                <strong>{activeLevel.duration[locale]}</strong>
-              </div>
-              <div className="metric">
-                <span>{t.progress}</span>
-                <strong>
-                  {completedLevels}/{content.levels.length}
-                </strong>
+
+              <div className="metric-grid">
+                <div className="metric">
+                  <span>{t.level}</span>
+                  <strong>{text(activeLevel.name[locale])}</strong>
+                </div>
+                <div className="metric">
+                  <span>{t.duration}</span>
+                  <strong>{text(activeLevel.duration[locale])}</strong>
+                </div>
+                <div className="metric metric-accent">
+                  <span>{t.mastery}</span>
+                  <strong>{currentSummary?.progress ?? 0}%</strong>
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="section">
+          <section className="objective-section" aria-labelledby="objective-title">
             <div className="section-header">
               <div>
-                <p className="eyebrow">{t.objective}</p>
-                <h2>{activeLevel.name[locale]}</h2>
+                <p className="eyebrow">
+                  <Target size={15} aria-hidden="true" />
+                  {t.objective}
+                </p>
+                <h2 id="objective-title">{text(activeLevel.name[locale])}</h2>
               </div>
               {activeLevel.id === "beginner" ? (
                 <span className="pill">{t.beginnerPath}</span>
               ) : null}
             </div>
-            <p>{activeLevel.goal[locale]}</p>
-            <div className="warning-box">{content.meta.sourceNote[locale]}</div>
+            <p>{text(activeLevel.goal[locale])}</p>
+            <div className="source-strip">
+              <BookOpenCheck size={18} aria-hidden="true" />
+              <span>{text(content.meta.sourceNote[locale])}</span>
+            </div>
           </section>
 
-          <section className="section">
+          <section className="dashboard-strip" aria-label={t.progress}>
+            <div className="dashboard-card">
+              <Clock3 size={20} aria-hidden="true" />
+              <span>{t.nextFocus}</span>
+              <strong>{nextModule ? text(nextModule.title[locale]) : t.emptyFocus}</strong>
+            </div>
+            <div className="dashboard-card">
+              <GraduationCap size={20} aria-hidden="true" />
+              <span>{t.modules}</span>
+              <strong>
+                {currentSummary?.moduleDone ?? 0}/{activeLevel.modules.length} {t.completed}
+              </strong>
+            </div>
+            <div className="dashboard-card">
+              <Trophy size={20} aria-hidden="true" />
+              <span>{t.score}</span>
+              <strong>
+                {currentSubmitted
+                  ? `${scorePercent}% - ${scorePercent >= 70 ? t.pass : t.improve}`
+                  : `${answeredCurrent}/${activeLevel.quiz.length} ${t.answered}`}
+              </strong>
+            </div>
+          </section>
+
+          <section className="content-section" id="modules" aria-labelledby="modules-title">
             <div className="section-header">
               <div>
-                <p className="eyebrow">{t.modules}</p>
-                <h2>{activeLevel.modules.length} modules</h2>
+                <p className="eyebrow">
+                  <Layers3 size={15} aria-hidden="true" />
+                  {t.modules}
+                </p>
+                <h2 id="modules-title">
+                  {activeLevel.modules.length} {t.modules.toLowerCase()}
+                </h2>
               </div>
+              <span className="section-progress">
+                {currentSummary?.modulePercent ?? 0}%
+              </span>
             </div>
+
             <div className="module-grid">
-              {activeLevel.modules.map((module) => (
-                <article className="module-card" key={module.id}>
-                  <h3>{module.title[locale]}</h3>
-                  <p>{module.summary[locale]}</p>
-                  <div className="module-meta">
-                    <span className="tag">{t.keyPoints}</span>
-                    <span className="tag">{t.practice}</span>
-                  </div>
-                  <ul>
-                    {module.keyPoints[locale].map((point) => (
-                      <li key={point}>{point}</li>
-                    ))}
-                  </ul>
-                  <div className="lab-box">
-                    <strong>{t.practice}: </strong>
-                    {module.practice[locale]}
-                  </div>
-                  <ol>
-                    {module.tips[locale].map((tip) => (
-                      <li key={tip}>{tip}</li>
-                    ))}
-                  </ol>
-                </article>
-              ))}
+              {activeLevel.modules.map((module) => {
+                const isDone = Boolean(completedModules[module.id]);
+
+                return (
+                  <article className="module-card" data-complete={isDone} key={module.id}>
+                    <div className="module-card-header">
+                      <div>
+                        <span className="module-state">
+                          {isDone ? t.moduleDone : t.moduleOpen}
+                        </span>
+                        <h3>{text(module.title[locale])}</h3>
+                      </div>
+                      <button
+                        className="icon-toggle"
+                        type="button"
+                        aria-pressed={isDone}
+                        aria-label={isDone ? t.markUndone : t.markDone}
+                        title={isDone ? t.markUndone : t.markDone}
+                        onClick={() => toggleModule(module.id)}
+                      >
+                        {isDone ? (
+                          <CheckCircle2 size={22} aria-hidden="true" />
+                        ) : (
+                          <Circle size={22} aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                    <p>{text(module.summary[locale])}</p>
+
+                    <div className="module-meta">
+                      <span className="tag">{t.keyPoints}</span>
+                      <span className="tag tag-green">{t.practice}</span>
+                    </div>
+
+                    <ul className="key-list">
+                      {module.keyPoints[locale].map((point) => (
+                        <li key={point}>{text(point)}</li>
+                      ))}
+                    </ul>
+
+                    <div className="lab-box">
+                      <strong>{t.practice}</strong>
+                      <span>{text(module.practice[locale])}</span>
+                    </div>
+
+                    <ol className="tip-list">
+                      {module.tips[locale].map((tip) => (
+                        <li key={tip}>{text(tip)}</li>
+                      ))}
+                    </ol>
+                  </article>
+                );
+              })}
             </div>
           </section>
 
-          <section className="quiz-panel" aria-labelledby="quiz-title">
+          <section className="quiz-panel" id="quiz" aria-labelledby="quiz-title">
             <div className="section-header">
               <div>
-                <p className="eyebrow">{t.quiz}</p>
-                <h2 id="quiz-title">{activeLevel.name[locale]}</h2>
+                <p className="eyebrow">
+                  <ClipboardCheck size={15} aria-hidden="true" />
+                  {t.quiz}
+                </p>
+                <h2 id="quiz-title">{text(activeLevel.name[locale])}</h2>
                 <p>{t.quizIntro}</p>
               </div>
-              <div className="score">
-                {t.score}: {submitted ? `${score}/${activeLevel.quiz.length}` : "--"}
+              <div className="score-card">
+                <span>{t.score}</span>
+                <strong>
+                  {currentSubmitted ? `${score}/${activeLevel.quiz.length}` : "--"}
+                </strong>
               </div>
+            </div>
+
+            <div className="quiz-status" data-ready={unanswered === 0}>
+              {unanswered === 0 ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : (
+                <Clock3 size={18} aria-hidden="true" />
+              )}
+              <span>
+                {unanswered === 0 ? t.quizReady : `${unanswered} ${t.unanswered}`}
+              </span>
             </div>
 
             {activeLevel.quiz.map((question, questionIndex) => (
               <div className="question" key={question.id}>
                 <p className="question-title">
-                  {questionIndex + 1}. {question.question[locale]}
+                  {questionIndex + 1}. {text(question.question[locale])}
                 </p>
                 <div className="answers">
                   {question.options[locale].map((option, optionIndex) => {
                     const state = getAnswerState(
                       answers[question.id],
-                      submitted,
+                      currentSubmitted,
                       optionIndex,
                       question.answer
                     );
+                    const isPressed = answers[question.id] === optionIndex;
+
                     return (
                       <button
                         className="answer"
                         data-state={state}
+                        aria-pressed={isPressed}
                         key={option}
                         onClick={() => selectAnswer(question.id, optionIndex)}
                         type="button"
                       >
-                        <span className="answer-mark">
-                          {state === "correct" ? "✓" : state === "wrong" ? "×" : "•"}
+                        <span className="answer-mark" aria-hidden="true">
+                          {state === "correct" ? (
+                            <CheckCircle2 size={17} />
+                          ) : state === "wrong" ? (
+                            <XCircle size={17} />
+                          ) : (
+                            <Circle size={17} />
+                          )}
                         </span>
-                        <span>{option}</span>
+                        <span>{text(option)}</span>
                       </button>
                     );
                   })}
                 </div>
-                {submitted ? (
-                  <p className="explanation">{question.explanation[locale]}</p>
+                {currentSubmitted ? (
+                  <p className="explanation">{text(question.explanation[locale])}</p>
                 ) : null}
               </div>
             ))}
@@ -339,34 +849,47 @@ export default function LearningApp() {
             <div className="quiz-actions">
               <button
                 className="primary-button"
-                onClick={() => setSubmitted(true)}
+                disabled={unanswered > 0}
+                onClick={submitQuiz}
                 type="button"
               >
+                <ClipboardCheck size={18} aria-hidden="true" />
                 {t.answer}
               </button>
               <button className="secondary-button" onClick={resetQuiz} type="button">
+                <RotateCcw size={18} aria-hidden="true" />
                 {t.reset}
               </button>
-              <span className="score">
-                {submitted
+              <button className="ghost-button" onClick={resetAllProgress} type="button">
+                {t.resetAll}
+              </button>
+              <span className="score-summary" aria-live="polite">
+                {currentSubmitted
                   ? `${scorePercent}% - ${scorePercent >= 70 ? t.pass : t.improve}`
-                  : `${activeLevel.quiz.length} ${t.quiz.toLowerCase()}`}
+                  : t.lockedScore}
               </span>
             </div>
           </section>
 
-          <section className="section">
+          <section className="content-section capstone-section" aria-labelledby="capstone-title">
             <div className="section-header">
               <div>
-                <p className="eyebrow">{t.capstone}</p>
-                <h2>{content.capstone.title[locale]}</h2>
+                <p className="eyebrow">
+                  <Globe2 size={15} aria-hidden="true" />
+                  {t.capstone}
+                </p>
+                <h2 id="capstone-title">{text(content.capstone.title[locale])}</h2>
               </div>
+              <span className="pill">{t.checkpoint}</span>
             </div>
-            <p>{content.capstone.brief[locale]}</p>
+            <p>{text(content.capstone.brief[locale])}</p>
             <h3>{t.deliverables}</h3>
-            <ul>
+            <ul className="deliverable-list">
               {content.capstone.deliverables[locale].map((deliverable) => (
-                <li key={deliverable}>{deliverable}</li>
+                <li key={deliverable}>
+                  <CheckCircle2 size={17} aria-hidden="true" />
+                  <span>{text(deliverable)}</span>
+                </li>
               ))}
             </ul>
           </section>

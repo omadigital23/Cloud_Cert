@@ -12,5 +12,8 @@ yarn-error.log*
 pnpm-debug.log*
 
 next-dev*.log
+next-start*.log
+*.tsbuildinfo
+audit-*.png
 .vercel/
 .DS_Store
