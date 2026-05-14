@@ -45,6 +45,25 @@ type Question = {
   explanation: Localized;
 };
 
+type LabStep = {
+  id: string;
+  title: Localized;
+  detail: Localized;
+};
+
+type CommandSnippet = {
+  id: string;
+  label: Localized;
+  command: string;
+};
+
+type LabPlaybook = {
+  title: Localized;
+  brief: Localized;
+  steps: LabStep[];
+  commands: CommandSnippet[];
+};
+
 type Level = {
   id: string;
   rank: number;
@@ -58,6 +77,7 @@ type Level = {
 type ProgressSnapshot = {
   answers?: Record<string, number>;
   completedModules?: Record<string, boolean>;
+  labChecks?: Record<string, boolean>;
   levelId?: string;
   locale?: Locale;
   submittedLevels?: Record<string, boolean>;
@@ -124,7 +144,18 @@ const copy = {
     emptyFocus: "Tous les modules du niveau sont marqués.",
     current: "En cours",
     complete: "Complet",
-    saved: "Progression sauvegardée"
+    saved: "Progression sauvegardée",
+    labCoach: "Coach lab",
+    labRunbook: "Runbook pratique",
+    labSteps: "Étapes",
+    commands: "Commandes utiles",
+    copyCommand: "Copier",
+    copied: "Copié",
+    markStepDone: "Valider l'étape",
+    markStepOpen: "Remettre à faire",
+    resetLab: "Réinitialiser le lab",
+    labComplete: "Lab prêt",
+    labInProgress: "Lab en cours"
   },
   en: {
     academy: "Cloud Cert",
@@ -170,9 +201,236 @@ const copy = {
     emptyFocus: "All modules in this level are marked.",
     current: "In progress",
     complete: "Complete",
-    saved: "Progress saved"
+    saved: "Progress saved",
+    labCoach: "Lab coach",
+    labRunbook: "Practical runbook",
+    labSteps: "Steps",
+    commands: "Useful commands",
+    copyCommand: "Copy",
+    copied: "Copied",
+    markStepDone: "Mark step done",
+    markStepOpen: "Mark open",
+    resetLab: "Reset lab",
+    labComplete: "Lab ready",
+    labInProgress: "Lab in progress"
   }
 } as const;
+
+const labPlaybooks: Record<string, LabPlaybook> = {
+  beginner: {
+    title: {
+      fr: "VPC auto mode et deux VM",
+      en: "Auto mode VPC and two VMs"
+    },
+    brief: {
+      fr: "Reproduis le lab Google Skills sans te perdre: supprimer le réseau default, créer mynetwork, déployer deux VM et vérifier la connectivité.",
+      en: "Recreate the Google Skills lab without getting lost: delete the default network, create mynetwork, deploy two VMs, and verify connectivity."
+    },
+    steps: [
+      {
+        id: "inspect-default",
+        title: { fr: "Explorer default", en: "Inspect default" },
+        detail: {
+          fr: "Ouvre default, regarde Subnets, Routes et Firewalls avant toute suppression.",
+          en: "Open default, review Subnets, Routes, and Firewalls before deleting anything."
+        }
+      },
+      {
+        id: "delete-default",
+        title: { fr: "Nettoyer default", en: "Clean default" },
+        detail: {
+          fr: "Supprime les règles default-allow-* puis le réseau default.",
+          en: "Delete default-allow-* rules, then delete the default network."
+        }
+      },
+      {
+        id: "create-vpc",
+        title: { fr: "Créer mynetwork", en: "Create mynetwork" },
+        detail: {
+          fr: "Mode Automatic, règles allow-custom, allow-icmp, allow-rdp et allow-ssh activées.",
+          en: "Automatic mode, with allow-custom, allow-icmp, allow-rdp, and allow-ssh enabled."
+        }
+      },
+      {
+        id: "create-vms",
+        title: { fr: "Créer les deux VM", en: "Create both VMs" },
+        detail: {
+          fr: "mynet-us-vm en us-west1-a et mynet-r2-vm en europe-west4-a, toutes les deux en e2-micro.",
+          en: "mynet-us-vm in us-west1-a and mynet-r2-vm in europe-west4-a, both using e2-micro."
+        }
+      },
+      {
+        id: "test-ping",
+        title: { fr: "Tester la connectivité", en: "Test connectivity" },
+        detail: {
+          fr: "Depuis mynet-us-vm, ping l'IP interne puis l'IP externe de mynet-r2-vm.",
+          en: "From mynet-us-vm, ping mynet-r2-vm's internal IP, then its external IP."
+        }
+      }
+    ],
+    commands: [
+      {
+        id: "ping-internal",
+        label: { fr: "Ping IP interne", en: "Ping internal IP" },
+        command: "ping -c 3 <INTERNAL_IP_OF_MYNET_R2_VM>"
+      },
+      {
+        id: "ping-external",
+        label: { fr: "Ping IP externe", en: "Ping external IP" },
+        command: "ping -c 3 <EXTERNAL_IP_OF_MYNET_R2_VM>"
+      },
+      {
+        id: "exit-ssh",
+        label: { fr: "Fermer SSH", en: "Close SSH" },
+        command: "exit"
+      }
+    ]
+  },
+  intermediate: {
+    title: {
+      fr: "Flux applicatif sécurisé",
+      en: "Secure application flow"
+    },
+    brief: {
+      fr: "Construis une chaîne réseau complète: firewall, service applicatif, DNS, HTTPS et observation.",
+      en: "Build a complete network path: firewall, application service, DNS, HTTPS, and observation."
+    },
+    steps: [
+      {
+        id: "draw-flow",
+        title: { fr: "Dessiner le flux", en: "Map the flow" },
+        detail: {
+          fr: "Identifie client, DNS, load balancer, service backend, firewall et journaux.",
+          en: "Identify client, DNS, load balancer, backend service, firewall, and logs."
+        }
+      },
+      {
+        id: "least-access",
+        title: { fr: "Limiter l'accès", en: "Limit access" },
+        detail: {
+          fr: "Autorise uniquement les ports nécessaires et documente chaque source.",
+          en: "Allow only required ports and document every source."
+        }
+      },
+      {
+        id: "verify-service",
+        title: { fr: "Vérifier le service", en: "Verify service" },
+        detail: {
+          fr: "Teste HTTP/HTTPS, DNS, health checks et logs avant de valider.",
+          en: "Test HTTP/HTTPS, DNS, health checks, and logs before marking the lab complete."
+        }
+      }
+    ],
+    commands: [
+      {
+        id: "curl-head",
+        label: { fr: "Test HTTP", en: "HTTP test" },
+        command: "curl -I https://<YOUR_DOMAIN_OR_IP>"
+      },
+      {
+        id: "dns-test",
+        label: { fr: "Test DNS", en: "DNS test" },
+        command: "dig <YOUR_DOMAIN>"
+      }
+    ]
+  },
+  advanced: {
+    title: {
+      fr: "Connectivité hybride",
+      en: "Hybrid connectivity"
+    },
+    brief: {
+      fr: "Prépare une architecture réseau hybride avec routage, NAT, VPN ou Interconnect et contrôles de sécurité.",
+      en: "Prepare a hybrid network architecture with routing, NAT, VPN or Interconnect, and security controls."
+    },
+    steps: [
+      {
+        id: "cidr-plan",
+        title: { fr: "Plan CIDR", en: "CIDR plan" },
+        detail: {
+          fr: "Vérifie les plages sans chevauchement entre VPC, on-prem et environnements futurs.",
+          en: "Verify non-overlapping ranges across VPC, on-prem, and future environments."
+        }
+      },
+      {
+        id: "route-policy",
+        title: { fr: "Routage et priorité", en: "Routing and priority" },
+        detail: {
+          fr: "Documente routes dynamiques, routes statiques, next hop et priorités.",
+          en: "Document dynamic routes, static routes, next hops, and priorities."
+        }
+      },
+      {
+        id: "resilience",
+        title: { fr: "Résilience", en: "Resilience" },
+        detail: {
+          fr: "Prévois redondance régionale, health checks et procédure de bascule.",
+          en: "Plan regional redundancy, health checks, and failover procedure."
+        }
+      }
+    ],
+    commands: [
+      {
+        id: "trace",
+        label: { fr: "Tracer un chemin", en: "Trace a path" },
+        command: "traceroute <PRIVATE_OR_PUBLIC_TARGET>"
+      },
+      {
+        id: "ping-mtu",
+        label: { fr: "Tester MTU", en: "Test MTU" },
+        command: "ping -M do -s 1460 <TARGET_IP>"
+      }
+    ]
+  },
+  expert: {
+    title: {
+      fr: "Design review production",
+      en: "Production design review"
+    },
+    brief: {
+      fr: "Passe d'un lab réussi à une conception défendable: sécurité, observabilité, coûts, opérations et reprise.",
+      en: "Move from a passed lab to a defensible design: security, observability, cost, operations, and recovery."
+    },
+    steps: [
+      {
+        id: "threat-model",
+        title: { fr: "Modèle de menace", en: "Threat model" },
+        detail: {
+          fr: "Liste les entrées publiques, données sensibles, rôles IAM et chemins d'escalade.",
+          en: "List public entry points, sensitive data, IAM roles, and escalation paths."
+        }
+      },
+      {
+        id: "slo",
+        title: { fr: "SLO et alertes", en: "SLOs and alerts" },
+        detail: {
+          fr: "Définis disponibilité, latence, perte de paquets, journaux utiles et alertes actionnables.",
+          en: "Define availability, latency, packet loss, useful logs, and actionable alerts."
+        }
+      },
+      {
+        id: "runbook",
+        title: { fr: "Runbook incident", en: "Incident runbook" },
+        detail: {
+          fr: "Écris les vérifications réseau, commandes, décisions de rollback et critères de résolution.",
+          en: "Write network checks, commands, rollback decisions, and resolution criteria."
+        }
+      }
+    ],
+    commands: [
+      {
+        id: "tcp-check",
+        label: { fr: "Tester un port", en: "Test a port" },
+        command: "nc -vz <HOST> <PORT>"
+      },
+      {
+        id: "mtr",
+        label: { fr: "Diagnostic réseau", en: "Network diagnostic" },
+        command: "mtr -rw <TARGET>"
+      }
+    ]
+  }
+};
 
 const frenchTextFixes: Array<[RegExp, string]> = [
   [/Ã©/g, "é"],
@@ -338,8 +596,10 @@ export default function LearningApp() {
   const [levelId, setLevelId] = useState(content.levels[0].id);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
+  const [labChecks, setLabChecks] = useState<Record<string, boolean>>({});
   const [submittedLevels, setSubmittedLevels] = useState<Record<string, boolean>>({});
   const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
+  const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
 
   const t = copy[locale];
 
@@ -404,6 +664,11 @@ export default function LearningApp() {
   );
   const completedLevels = levelSummaries.filter((summary) => summary.complete).length;
   const nextModule = activeLevel.modules.find((module) => !completedModules[module.id]);
+  const activePlaybook = labPlaybooks[activeLevel.id] ?? labPlaybooks.beginner;
+  const activeLabSteps = activePlaybook.steps;
+  const completedLabSteps = activeLabSteps.filter((step) => labChecks[`${activeLevel.id}:${step.id}`]).length;
+  const labProgressPercent =
+    activeLabSteps.length > 0 ? Math.round((completedLabSteps / activeLabSteps.length) * 100) : 0;
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -417,6 +682,7 @@ export default function LearningApp() {
 
         setAnswers(parsed.answers ?? {});
         setCompletedModules(parsed.completedModules ?? {});
+        setLabChecks(parsed.labChecks ?? {});
         setSubmittedLevels(parsed.submittedLevels ?? {});
 
         if (savedLevelExists && parsed.levelId) {
@@ -447,13 +713,14 @@ export default function LearningApp() {
     const snapshot: ProgressSnapshot = {
       answers,
       completedModules,
+      labChecks,
       levelId,
       locale,
       submittedLevels
     };
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  }, [answers, completedModules, hasLoadedProgress, levelId, locale, submittedLevels]);
+  }, [answers, completedModules, hasLoadedProgress, labChecks, levelId, locale, submittedLevels]);
 
   function selectLevel(nextLevelId: string) {
     setLevelId(nextLevelId);
@@ -494,6 +761,7 @@ export default function LearningApp() {
   function resetAllProgress() {
     setAnswers({});
     setCompletedModules({});
+    setLabChecks({});
     setSubmittedLevels({});
   }
 
@@ -502,6 +770,51 @@ export default function LearningApp() {
       ...current,
       [moduleId]: !current[moduleId]
     }));
+  }
+
+  function toggleLabStep(stepId: string) {
+    const key = `${activeLevel.id}:${stepId}`;
+
+    setLabChecks((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
+  function resetLabSteps() {
+    setLabChecks((current) => {
+      const next = { ...current };
+
+      for (const step of activeLabSteps) {
+        delete next[`${activeLevel.id}:${step.id}`];
+      }
+
+      return next;
+    });
+  }
+
+  async function copyCommand(commandId: string, command: string) {
+    let copied = false;
+
+    try {
+      await navigator.clipboard.writeText(command);
+      copied = true;
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = command;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    if (copied) {
+      setCopiedCommandId(commandId);
+      window.setTimeout(() => setCopiedCommandId(null), 1400);
+    }
   }
 
   return (
@@ -652,6 +965,10 @@ export default function LearningApp() {
                   <span>{t.mastery}</span>
                   <strong>{currentSummary?.progress ?? 0}%</strong>
                 </div>
+                <div className="metric">
+                  <span>{t.labCoach}</span>
+                  <strong>{labProgressPercent}%</strong>
+                </div>
               </div>
             </div>
           </section>
@@ -697,6 +1014,99 @@ export default function LearningApp() {
                   ? `${scorePercent}% - ${scorePercent >= 70 ? t.pass : t.improve}`
                   : `${answeredCurrent}/${activeLevel.quiz.length} ${t.answered}`}
               </strong>
+            </div>
+          </section>
+
+          <section className="content-section lab-coach-section" aria-labelledby="lab-coach-title">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">
+                  <ShieldCheck size={15} aria-hidden="true" />
+                  {t.labCoach}
+                </p>
+                <h2 id="lab-coach-title">{text(activePlaybook.title[locale])}</h2>
+                <p>{text(activePlaybook.brief[locale])}</p>
+              </div>
+              <span className="section-progress">
+                {completedLabSteps}/{activeLabSteps.length}
+              </span>
+            </div>
+
+            <div className="lab-coach-grid">
+              <div className="lab-checklist" aria-label={t.labSteps}>
+                <div className="lab-progress">
+                  <span>
+                    {labProgressPercent === 100 ? t.labComplete : t.labInProgress}
+                  </span>
+                  <strong>{labProgressPercent}%</strong>
+                  <span className="lab-progress-track" aria-hidden="true">
+                    <span style={{ width: `${labProgressPercent}%` }} />
+                  </span>
+                </div>
+
+                <ol className="lab-step-list">
+                  {activeLabSteps.map((step, stepIndex) => {
+                    const stepKey = `${activeLevel.id}:${step.id}`;
+                    const isDone = Boolean(labChecks[stepKey]);
+
+                    return (
+                      <li key={step.id}>
+                        <button
+                          className="lab-step"
+                          data-complete={isDone}
+                          type="button"
+                          aria-pressed={isDone}
+                          aria-label={isDone ? t.markStepOpen : t.markStepDone}
+                          onClick={() => toggleLabStep(step.id)}
+                        >
+                          <span className="lab-step-index" aria-hidden="true">
+                            {isDone ? (
+                              <CheckCircle2 size={18} />
+                            ) : (
+                              String(stepIndex + 1).padStart(2, "0")
+                            )}
+                          </span>
+                          <span>
+                            <strong>{text(step.title[locale])}</strong>
+                            <span>{text(step.detail[locale])}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+
+              <div className="command-panel" aria-label={t.commands}>
+                <div className="command-panel-header">
+                  <span>{t.commands}</span>
+                  <button className="ghost-button compact-button" type="button" onClick={resetLabSteps}>
+                    <RotateCcw size={16} aria-hidden="true" />
+                    {t.resetLab}
+                  </button>
+                </div>
+
+                {activePlaybook.commands.map((snippet) => {
+                  const commandKey = `${activeLevel.id}:${snippet.id}`;
+
+                  return (
+                    <div className="command-row" key={snippet.id}>
+                      <div>
+                        <span>{text(snippet.label[locale])}</span>
+                        <code>{snippet.command}</code>
+                      </div>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => copyCommand(commandKey, snippet.command)}
+                      >
+                        <ClipboardCheck size={16} aria-hidden="true" />
+                        {copiedCommandId === commandKey ? t.copied : t.copyCommand}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
