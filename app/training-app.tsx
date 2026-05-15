@@ -229,7 +229,7 @@ const copy = {
     supabaseVercel: "Supabase + Vercel ready",
     saveError: "Erreur de sauvegarde",
     welcomeBack: "Progression restaurée",
-    checkEmail: "Compte créé. Vérifie ton email si Supabase demande une confirmation.",
+    accountCreated: "Compte créé. Connecte-toi maintenant.",
     cloudHint: "Ajoute tes variables Supabase sur Vercel pour activer les comptes réels.",
     today: "Aujourd'hui",
     issuedTo: "Décerné à",
@@ -325,7 +325,7 @@ const copy = {
     supabaseVercel: "Supabase + Vercel ready",
     saveError: "Save error",
     welcomeBack: "Progress restored",
-    checkEmail: "Account created. Check your email if Supabase requires confirmation.",
+    accountCreated: "Account created. Sign in now.",
     cloudHint: "Add your Supabase variables on Vercel to enable real accounts.",
     today: "Today",
     issuedTo: "Issued to",
@@ -1319,7 +1319,17 @@ export default function LearningApp() {
       if (error) {
         setAuthError(error.message);
       } else {
-        setAuthNotice(data.session ? t.welcomeBack : t.checkEmail);
+        if (data.session) {
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setCloudProfile(null);
+          setHasLoadedCloudProgress(false);
+        }
+
+        setAuthMode("signIn");
+        setAuthPassword("");
+        setAuthNotice(t.accountCreated);
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
