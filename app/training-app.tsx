@@ -46,6 +46,7 @@ type ProgressSnapshot = {
   levelId?: string;
   locale?: Locale;
   moduleId?: string;
+  moduleLabChecks?: Record<string, boolean>;
   submittedModuleQuizzes?: Record<string, boolean>;
   submittedLevels?: Record<string, boolean>;
 };
@@ -65,11 +66,16 @@ type DashboardStats = {
   completedLabSteps: number;
   completedLevels: number;
   completedModuleCount: number;
+  completedModuleLabSteps: number;
   correctAnswers: number;
+  labReadiness: number;
   levelCount: number;
+  moduleCompletion: number;
   points: number;
+  quizAccuracy: number;
   readiness: number;
   totalLabSteps: number;
+  totalModuleLabSteps: number;
   totalModules: number;
   totalQuestions: number;
 };
@@ -513,6 +519,10 @@ function formatDate(locale: Locale, date = new Date()) {
   }).format(date);
 }
 
+function getPercent(done: number, total: number) {
+  return total > 0 ? Math.round((done / total) * 100) : 0;
+}
+
 function buildCertificateId(userId: string | undefined, points: number) {
   const source = `${userId ?? "local"}-${points}-${new Date().getFullYear()}`;
   let hash = 0;
@@ -621,6 +631,7 @@ export default function LearningApp() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
   const [labChecks, setLabChecks] = useState<Record<string, boolean>>({});
+  const [moduleLabChecks, setModuleLabChecks] = useState<Record<string, boolean>>({});
   const [submittedModuleQuizzes, setSubmittedModuleQuizzes] = useState<Record<string, boolean>>({});
   const [submittedLevels, setSubmittedLevels] = useState<Record<string, boolean>>({});
   const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
@@ -696,6 +707,16 @@ export default function LearningApp() {
   const unanswered = activeModuleQuiz.length - answeredCurrent;
   const modulePassed = currentSubmitted && scorePercent >= MODULE_PASS_PERCENT;
   const canGoNextModule = modulePassed;
+  const quizProgressPercent = currentSubmitted ? scorePercent : getPercent(answeredCurrent, activeModuleQuiz.length);
+  const wrongAnswers = currentSubmitted
+    ? activeModuleQuiz.filter((question) => answers[question.id] !== question.answer)
+    : [];
+  const activeModuleLabSteps = activeModule.guidedLab.steps;
+  const completedModuleLabSteps = activeModuleLabSteps.filter((step) => {
+    return moduleLabChecks[`${activeModule.id}:${step.id}`];
+  }).length;
+  const moduleLabProgressPercent = getPercent(completedModuleLabSteps, activeModuleLabSteps.length);
+  const moduleLabComplete = activeModuleLabSteps.length === 0 || completedModuleLabSteps === activeModuleLabSteps.length;
 
   const totalModules = content.levels.reduce((total, level) => total + level.modules.length, 0);
   const completedModuleCount = content.levels.reduce((total, level) => {
@@ -717,9 +738,6 @@ export default function LearningApp() {
       }, 0)
     );
   }, 0);
-  const readiness = Math.round(
-    (completedModuleCount / totalModules) * 60 + (correctAnswers / totalQuestions) * 40
-  );
   const completedLevels = levelSummaries.filter((summary) => summary.complete).length;
   const nextSequentialModule = activeLevel.modules[activeModuleIndex + 1];
   const nextModule = completedModules[activeModule.id]
@@ -745,16 +763,38 @@ export default function LearningApp() {
       playbook.steps.filter((step) => labChecks[`${level.id}:${step.id}`]).length
     );
   }, 0);
+  const totalModuleLabSteps = content.levels.reduce((total, level) => {
+    return total + level.modules.reduce((moduleTotal, module) => moduleTotal + module.guidedLab.steps.length, 0);
+  }, 0);
+  const completedModuleLabStepCount = content.levels.reduce((total, level) => {
+    return (
+      total +
+      level.modules.reduce((moduleTotal, module) => {
+        return (
+          moduleTotal +
+          module.guidedLab.steps.filter((step) => moduleLabChecks[`${module.id}:${step.id}`]).length
+        );
+      }, 0)
+    );
+  }, 0);
+  const moduleCompletion = getPercent(completedModuleCount, totalModules);
+  const quizAccuracy = getPercent(correctAnswers, totalQuestions);
+  const totalHandsOnSteps = totalLabSteps + totalModuleLabSteps;
+  const completedHandsOnSteps = completedTotalLabSteps + completedModuleLabStepCount;
+  const labReadiness = getPercent(completedHandsOnSteps, totalHandsOnSteps);
+  const readiness = Math.round(moduleCompletion * 0.45 + quizAccuracy * 0.35 + labReadiness * 0.2);
   const points =
     completedModuleCount * 120 +
     correctAnswers * 80 +
     completedTotalLabSteps * 55 +
+    completedModuleLabStepCount * 35 +
     completedLevels * 500 +
     (readiness >= 90 ? 350 : 0);
   const certificateReady =
     completedLevels === content.levels.length &&
     completedModuleCount === totalModules &&
     completedTotalLabSteps === totalLabSteps &&
+    completedModuleLabStepCount === totalModuleLabSteps &&
     readiness >= 90;
   const displayName =
     cloudProfile?.display_name ||
@@ -764,17 +804,84 @@ export default function LearningApp() {
   const certificateId = buildCertificateId(user?.id, points);
   const dashboardStats: DashboardStats = {
     certificateReady,
-    completedLabSteps: completedTotalLabSteps,
+    completedLabSteps: completedHandsOnSteps,
     completedLevels,
     completedModuleCount,
+    completedModuleLabSteps: completedModuleLabStepCount,
     correctAnswers,
+    labReadiness,
     levelCount: content.levels.length,
+    moduleCompletion,
     points,
+    quizAccuracy,
     readiness,
-    totalLabSteps,
+    totalLabSteps: totalHandsOnSteps,
+    totalModuleLabSteps,
     totalModules,
     totalQuestions
   };
+  const dashboardInsights = [
+    {
+      icon: <BookOpenCheck size={18} aria-hidden="true" />,
+      id: "modules",
+      label: t.moduleCompletion,
+      percent: dashboardStats.moduleCompletion,
+      value: `${dashboardStats.completedModuleCount}/${dashboardStats.totalModules}`
+    },
+    {
+      icon: <ClipboardCheck size={18} aria-hidden="true" />,
+      id: "quiz",
+      label: t.quizAccuracy,
+      percent: dashboardStats.quizAccuracy,
+      value: `${dashboardStats.correctAnswers}/${dashboardStats.totalQuestions}`
+    },
+    {
+      icon: <ShieldCheck size={18} aria-hidden="true" />,
+      id: "labs",
+      label: t.handsOnLabs,
+      percent: dashboardStats.labReadiness,
+      value: `${dashboardStats.completedLabSteps}/${dashboardStats.totalLabSteps}`
+    },
+    {
+      icon: <Award size={18} aria-hidden="true" />,
+      id: "certificate",
+      label: t.certificationGate,
+      percent: dashboardStats.certificateReady ? 100 : dashboardStats.readiness,
+      value: dashboardStats.certificateReady ? t.certificateReady : t.certificateLocked
+    }
+  ];
+  const moduleGateCards = [
+    {
+      id: "lesson",
+      label: t.estimatedTime,
+      percent: 100,
+      state: "complete",
+      value: text(activeModule.estimatedTime[locale])
+    },
+    {
+      id: "lab",
+      label: t.guidedMiniLab,
+      percent: moduleLabProgressPercent,
+      state: moduleLabComplete ? "complete" : "open",
+      value: `${completedModuleLabSteps}/${activeModuleLabSteps.length}`
+    },
+    {
+      id: "quiz",
+      label: t.quizGate,
+      percent: quizProgressPercent,
+      state: modulePassed ? "complete" : unanswered === 0 && !currentSubmitted ? "ready" : "open",
+      value: currentSubmitted ? `${scorePercent}%` : `${answeredCurrent}/${activeModuleQuiz.length}`
+    }
+  ];
+  const moduleNextAction = !moduleLabComplete
+    ? t.finishMiniLab
+    : unanswered > 0
+      ? t.answerRemainingQuestions
+      : !currentSubmitted
+        ? t.submitReadyQuiz
+        : modulePassed
+          ? t.readyForNext
+          : t.reviewMistakes;
   const currentProgressSnapshot = useMemo<ProgressSnapshot>(
     () => ({
       answers,
@@ -783,10 +890,21 @@ export default function LearningApp() {
       levelId,
       locale,
       moduleId,
+      moduleLabChecks,
       submittedModuleQuizzes,
       submittedLevels
     }),
-    [answers, completedModules, labChecks, levelId, locale, moduleId, submittedModuleQuizzes, submittedLevels]
+    [
+      answers,
+      completedModules,
+      labChecks,
+      levelId,
+      locale,
+      moduleId,
+      moduleLabChecks,
+      submittedModuleQuizzes,
+      submittedLevels
+    ]
   );
   const latestSnapshotRef = useRef(currentProgressSnapshot);
   const latestPointsRef = useRef(points);
@@ -812,6 +930,7 @@ export default function LearningApp() {
         setAnswers(parsed.answers ?? {});
         setCompletedModules(parsed.completedModules ?? {});
         setLabChecks(parsed.labChecks ?? {});
+        setModuleLabChecks(parsed.moduleLabChecks ?? {});
         setSubmittedModuleQuizzes(parsed.submittedModuleQuizzes ?? {});
         setSubmittedLevels(parsed.submittedLevels ?? {});
 
@@ -908,6 +1027,7 @@ export default function LearningApp() {
         setAnswers(savedProgress.answers ?? {});
         setCompletedModules(savedProgress.completedModules ?? {});
         setLabChecks(savedProgress.labChecks ?? {});
+        setModuleLabChecks(savedProgress.moduleLabChecks ?? {});
         setSubmittedModuleQuizzes(savedProgress.submittedModuleQuizzes ?? {});
         setSubmittedLevels(savedProgress.submittedLevels ?? {});
 
@@ -1096,6 +1216,7 @@ export default function LearningApp() {
     setAnswers({});
     setCompletedModules({});
     setLabChecks({});
+    setModuleLabChecks({});
     setSubmittedModuleQuizzes({});
     setSubmittedLevels({});
     setLevelId(content.levels[0].id);
@@ -1149,6 +1270,27 @@ export default function LearningApp() {
 
       for (const step of activeLabSteps) {
         delete next[`${activeLevel.id}:${step.id}`];
+      }
+
+      return next;
+    });
+  }
+
+  function toggleModuleLabStep(stepId: string) {
+    const key = `${activeModule.id}:${stepId}`;
+
+    setModuleLabChecks((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
+  function resetModuleLabSteps() {
+    setModuleLabChecks((current) => {
+      const next = { ...current };
+
+      for (const step of activeModuleLabSteps) {
+        delete next[`${activeModule.id}:${step.id}`];
       }
 
       return next;
@@ -1702,6 +1844,22 @@ export default function LearningApp() {
               </article>
             </div>
 
+            <div className="insight-grid" aria-label={t.masteryInsights}>
+              {dashboardInsights.map((insight) => (
+                <article className="insight-card" key={insight.id}>
+                  <div>
+                    {insight.icon}
+                    <span>{insight.label}</span>
+                  </div>
+                  <strong>{insight.value}</strong>
+                  <span className="mini-progress" aria-hidden="true">
+                    <span style={{ width: `${insight.percent}%` }} />
+                  </span>
+                  <small>{insight.percent}%</small>
+                </article>
+              ))}
+            </div>
+
             <div className="achievement-grid">
               <div className="badge-rail" aria-label={t.badges}>
                 <span className="badge-token" data-active={completedModuleCount > 0}>
@@ -1778,6 +1936,43 @@ export default function LearningApp() {
                   ? `${scorePercent}% - ${modulePassed ? t.pass : t.improve}`
                   : `${answeredCurrent}/${activeModuleQuiz.length} ${t.answered}`}
               </strong>
+            </div>
+          </section>
+
+          <section className="control-center" aria-labelledby="control-title">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">
+                  <Gauge size={15} aria-hidden="true" />
+                  {t.moduleControl}
+                </p>
+                <h2 id="control-title">{text(activeModule.title[locale])}</h2>
+                <p>{text(activeModule.summary[locale])}</p>
+              </div>
+              <span className="status-pill" data-state={modulePassed ? "complete" : "open"}>
+                {moduleNextAction}
+              </span>
+            </div>
+
+            <div className="gate-grid" aria-label={t.certificationGate}>
+              {moduleGateCards.map((gate) => (
+                <article className="gate-card" data-state={gate.state} key={gate.id}>
+                  <span>{gate.label}</span>
+                  <strong>{gate.value}</strong>
+                  <span className="mini-progress" aria-hidden="true">
+                    <span style={{ width: `${gate.percent}%` }} />
+                  </span>
+                  <small>{gate.percent}%</small>
+                </article>
+              ))}
+            </div>
+
+            <div className="recommendation-card">
+              <Sparkles size={18} aria-hidden="true" />
+              <div>
+                <strong>{t.nextAction}</strong>
+                <p>{moduleNextAction}</p>
+              </div>
             </div>
           </section>
 
@@ -1971,21 +2166,60 @@ export default function LearningApp() {
                 </ol>
               </article>
 
-              <article className="course-card course-card-wide">
-                <span>{t.guidedMiniLab}</span>
-                <h3>{text(activeModule.guidedLab.title[locale])}</h3>
-                <p>{text(activeModule.guidedLab.objective[locale])}</p>
-                <ol className="mini-lab-list">
-                  {activeModule.guidedLab.steps.map((step, stepIndex) => (
-                    <li key={step.id}>
-                      <strong>{String(stepIndex + 1).padStart(2, "0")}</strong>
-                      <span>
-                        <b>{text(step.title[locale])}</b>
-                        {text(step.detail[locale])}
-                      </span>
-                    </li>
-                  ))}
+              <article className="course-card course-card-wide module-lab-card">
+                <div className="module-lab-head">
+                  <div>
+                    <span>{t.guidedMiniLab}</span>
+                    <h3>{text(activeModule.guidedLab.title[locale])}</h3>
+                    <p>{text(activeModule.guidedLab.objective[locale])}</p>
+                  </div>
+                  <span className="section-progress">
+                    {completedModuleLabSteps}/{activeModuleLabSteps.length}
+                  </span>
+                </div>
+
+                <div className="lab-progress module-lab-progress">
+                  <span>{moduleLabComplete ? t.labComplete : t.labInProgress}</span>
+                  <strong>{moduleLabProgressPercent}%</strong>
+                  <span className="lab-progress-track" aria-hidden="true">
+                    <span style={{ width: `${moduleLabProgressPercent}%` }} />
+                  </span>
+                </div>
+
+                <ol className="mini-lab-list interactive-mini-lab">
+                  {activeModuleLabSteps.map((step, stepIndex) => {
+                    const stepKey = `${activeModule.id}:${step.id}`;
+                    const isDone = Boolean(moduleLabChecks[stepKey]);
+
+                    return (
+                      <li key={step.id}>
+                        <button
+                          className="mini-lab-step"
+                          data-complete={isDone}
+                          type="button"
+                          aria-pressed={isDone}
+                          onClick={() => toggleModuleLabStep(step.id)}
+                        >
+                          <strong aria-hidden="true">
+                            {isDone ? <CheckCircle2 size={18} /> : String(stepIndex + 1).padStart(2, "0")}
+                          </strong>
+                          <span>
+                            <b>{text(step.title[locale])}</b>
+                            {text(step.detail[locale])}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ol>
+
+                <div className="module-lab-actions">
+                  <button className="ghost-button compact-button" type="button" onClick={resetModuleLabSteps}>
+                    <RotateCcw size={16} aria-hidden="true" />
+                    {t.resetLab}
+                  </button>
+                  <span>{t.certificationLabRule}</span>
+                </div>
               </article>
             </div>
           </section>
@@ -2033,6 +2267,31 @@ export default function LearningApp() {
               <div className="feedback-card" role="status">
                 <span>{t.remediation}</span>
                 <p>{text(activeModule.failureFeedback[locale])}</p>
+                <div className="remediation-grid">
+                  {wrongAnswers.map((question) => {
+                    const selectedAnswer = answers[question.id];
+                    const selectedText =
+                      selectedAnswer === undefined
+                        ? t.noAnswer
+                        : text(question.options[locale][selectedAnswer]);
+                    const correctText = text(question.options[locale][question.answer]);
+
+                    return (
+                      <article className="remediation-item" key={question.id}>
+                        <strong>{text(question.question[locale])}</strong>
+                        <div className="answer-review">
+                          <span>{t.yourAnswer}</span>
+                          <p>{selectedText}</p>
+                        </div>
+                        <div className="answer-review" data-correct="true">
+                          <span>{t.correctAnswer}</span>
+                          <p>{correctText}</p>
+                        </div>
+                        <small>{text(question.explanation[locale])}</small>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
 
