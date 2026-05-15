@@ -1,31 +1,36 @@
 "use client";
 
 import {
+  AlertCircle,
   Award,
   BarChart3,
+  BookOpen,
   BookOpenCheck,
   CheckCircle2,
   ChevronRight,
   Circle,
   ClipboardCheck,
-  Clock3,
   Cloud,
+  Copy,
   Database,
   Download,
+  FlaskConical,
   Gauge,
-  Globe2,
   GraduationCap,
   KeyRound,
+  Lightbulb,
   Loader2,
   LogIn,
   LogOut,
   Mail,
-  Medal,
+  MessageCircle,
   Layers3,
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Star,
   Target,
+  Terminal,
   Trophy,
   UserRound,
   XCircle
@@ -47,6 +52,7 @@ type ProgressSnapshot = {
   locale?: Locale;
   moduleId?: string;
   moduleLabChecks?: Record<string, boolean>;
+  moduleRead?: Record<string, boolean>;
   submittedModuleQuizzes?: Record<string, boolean>;
   submittedLevels?: Record<string, boolean>;
 };
@@ -445,7 +451,6 @@ function polishFrench(value: string) {
     return current.replace(pattern, replacement);
   }, value);
 }
-
 function getAnswerState(
   selected: number | undefined,
   submitted: boolean,
@@ -650,6 +655,10 @@ export default function LearningApp() {
   const [cloudProfile, setCloudProfile] = useState<CloudProfile | null>(null);
   const [hasLoadedCloudProgress, setHasLoadedCloudProgress] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
+  const [activeTab, setActiveTab] = useState<"course" | "lab" | "quiz">("course");
+  const [moduleRead, setModuleRead] = useState<Record<string, boolean>>({
+    [content.levels[0].modules[0].id]: true
+  });
 
   const t = copy[locale];
 
@@ -718,10 +727,20 @@ export default function LearningApp() {
   const moduleLabProgressPercent = getPercent(completedModuleLabSteps, activeModuleLabSteps.length);
   const moduleLabComplete = activeModuleLabSteps.length === 0 || completedModuleLabSteps === activeModuleLabSteps.length;
 
+  // Aliases for tab-based UI
+  const moduleQuizSubmitted = currentSubmitted;
+  const moduleQuizPassed = modulePassed;
+  const moduleScorePercent = scorePercent;
+  const moduleQuizQuestions = activeModuleQuiz;
+  const moduleLabDone = moduleLabComplete;
+  const activeModuleDetail = activeModule;
+  const activeLab = labPlaybooks[activeLevel.id] ?? null;
+
   const totalModules = content.levels.reduce((total, level) => total + level.modules.length, 0);
   const completedModuleCount = content.levels.reduce((total, level) => {
     return total + level.modules.filter((module) => completedModules[module.id]).length;
   }, 0);
+  const allModulesComplete = completedModuleCount === totalModules;
   const totalQuestions = content.levels.reduce((total, level) => {
     return total + level.modules.reduce((moduleTotal, module) => moduleTotal + getModuleQuiz(module).length, 0);
   }, 0);
@@ -796,6 +815,10 @@ export default function LearningApp() {
     completedTotalLabSteps === totalLabSteps &&
     completedModuleLabStepCount === totalModuleLabSteps &&
     readiness >= 90;
+  const allLabsDone =
+    completedTotalLabSteps === totalLabSteps &&
+    completedModuleLabStepCount === totalModuleLabSteps;
+  const certificateUnlocked = certificateReady;
   const displayName =
     cloudProfile?.display_name ||
     authName.trim() ||
@@ -891,6 +914,7 @@ export default function LearningApp() {
       locale,
       moduleId,
       moduleLabChecks,
+      moduleRead,
       submittedModuleQuizzes,
       submittedLevels
     }),
@@ -902,6 +926,7 @@ export default function LearningApp() {
       locale,
       moduleId,
       moduleLabChecks,
+      moduleRead,
       submittedModuleQuizzes,
       submittedLevels
     ]
@@ -931,6 +956,7 @@ export default function LearningApp() {
         setCompletedModules(parsed.completedModules ?? {});
         setLabChecks(parsed.labChecks ?? {});
         setModuleLabChecks(parsed.moduleLabChecks ?? {});
+        setModuleRead(parsed.moduleRead ?? (savedModuleExists && parsed.moduleId ? { [parsed.moduleId]: true } : {}));
         setSubmittedModuleQuizzes(parsed.submittedModuleQuizzes ?? {});
         setSubmittedLevels(parsed.submittedLevels ?? {});
 
@@ -1028,6 +1054,10 @@ export default function LearningApp() {
         setCompletedModules(savedProgress.completedModules ?? {});
         setLabChecks(savedProgress.labChecks ?? {});
         setModuleLabChecks(savedProgress.moduleLabChecks ?? {});
+        setModuleRead(
+          savedProgress.moduleRead ??
+            (savedModuleExists && savedProgress.moduleId ? { [savedProgress.moduleId]: true } : {})
+        );
         setSubmittedModuleQuizzes(savedProgress.submittedModuleQuizzes ?? {});
         setSubmittedLevels(savedProgress.submittedLevels ?? {});
 
@@ -1148,9 +1178,12 @@ export default function LearningApp() {
 
   function selectLevel(nextLevelId: string) {
     const nextLevel = content.levels.find((level) => level.id === nextLevelId) ?? content.levels[0];
+    const nextModuleId = getFirstAvailableModule(nextLevel, completedModules).id;
 
     setLevelId(nextLevel.id);
-    setModuleId(getFirstAvailableModule(nextLevel, completedModules).id);
+    setModuleId(nextModuleId);
+    setActiveTab("course");
+    setModuleRead((current) => ({ ...current, [nextModuleId]: true }));
   }
 
   function selectAnswer(questionId: string, answerIndex: number) {
@@ -1217,11 +1250,17 @@ export default function LearningApp() {
     setCompletedModules({});
     setLabChecks({});
     setModuleLabChecks({});
+    setModuleRead({ [content.levels[0].modules[0].id]: true });
     setSubmittedModuleQuizzes({});
     setSubmittedLevels({});
     setLevelId(content.levels[0].id);
     setModuleId(content.levels[0].modules[0].id);
+    setActiveTab("course");
   }
+
+  // Aliases for tab UI
+  const submitModuleQuiz = submitQuiz;
+  const resetModuleQuiz = resetQuiz;
 
   function selectModule(nextModuleId: string) {
     const moduleIndex = activeLevel.modules.findIndex((module) => module.id === nextModuleId);
@@ -1235,6 +1274,8 @@ export default function LearningApp() {
     }
 
     setModuleId(nextModuleId);
+    setActiveTab("course");
+    setModuleRead((current) => ({ ...current, [nextModuleId]: true }));
   }
 
   function goToNextModule() {
@@ -1244,6 +1285,8 @@ export default function LearningApp() {
 
     if (nextSequentialModule) {
       setModuleId(nextSequentialModule.id);
+      setActiveTab("course");
+      setModuleRead((current) => ({ ...current, [nextSequentialModule.id]: true }));
       return;
     }
 
@@ -1252,6 +1295,8 @@ export default function LearningApp() {
     if (nextLevel) {
       setLevelId(nextLevel.id);
       setModuleId(nextLevel.modules[0].id);
+      setActiveTab("course");
+      setModuleRead((current) => ({ ...current, [nextLevel.modules[0].id]: true }));
     }
   }
 
@@ -1741,116 +1786,29 @@ export default function LearningApp() {
         </aside>
 
         <main className="main">
-          <section className="hero" aria-labelledby="page-title">
-            <div className="hero-copy">
-              <p className="eyebrow">
-                <ShieldCheck size={15} aria-hidden="true" />
-                Google Cloud Network Engineering
-              </p>
-              <h1 id="page-title">{text(content.meta.title[locale])}</h1>
-              <p className="lead">{text(content.meta.subtitle[locale])}</p>
-
-              <div className="hero-actions">
-                <a className="primary-link" href="#modules">
-                  <Layers3 size={17} aria-hidden="true" />
-                  {t.modules}
-                </a>
-                <a className="secondary-link" href="#quiz">
-                  <ClipboardCheck size={17} aria-hidden="true" />
-                  {t.quiz}
-                </a>
-              </div>
-            </div>
-
-            <div className="status-panel" aria-label={t.progress} aria-live="polite">
-              <div className="topology-card" aria-label={t.topology}>
-                <span className="topology-title">{t.topology}</span>
-                <div className="topology-map" aria-hidden="true">
-                  <span className="topology-line line-one" />
-                  <span className="topology-line line-two" />
-                  <span className="node node-dns">DNS</span>
-                  <span className="node node-cdn">CDN</span>
-                  <span className="node node-lb">LB</span>
-                  <span className="node node-vpc">VPC</span>
-                  <span className="node node-iam">IAM</span>
-                </div>
-              </div>
-
-              <div className="metric-grid">
-                <div className="metric">
-                  <span>{t.level}</span>
-                  <strong>{text(activeLevel.name[locale])}</strong>
-                </div>
-                <div className="metric">
-                  <span>{t.duration}</span>
-                  <strong>{text(activeLevel.duration[locale])}</strong>
-                </div>
-                <div className="metric metric-accent">
-                  <span>{t.mastery}</span>
-                  <strong>{currentSummary?.progress ?? 0}%</strong>
-                </div>
-                <div className="metric">
-                  <span>{t.labCoach}</span>
-                  <strong>{labProgressPercent}%</strong>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="dashboard-panel" aria-labelledby="dashboard-title">
-            <div className="section-header">
+          <section className="compact-dashboard fade-in" aria-label={t.dashboard}>
+            <div className="dashboard-hero">
               <div>
                 <p className="eyebrow">
                   <BarChart3 size={15} aria-hidden="true" />
                   {t.dashboard}
                 </p>
-                <h2 id="dashboard-title">{displayName}</h2>
-                <p>{t.certificateRule}</p>
+                <h1>{displayName}</h1>
+                <p>{moduleNextAction}</p>
               </div>
-              <span className="sync-pill" data-state={cloudStatus}>
-                {cloudStatus === "syncing" ? (
-                  <Loader2 className="spin" size={15} aria-hidden="true" />
-                ) : cloudStatus === "error" ? (
-                  <XCircle size={15} aria-hidden="true" />
-                ) : (
-                  <CheckCircle2 size={15} aria-hidden="true" />
-                )}
-                {cloudLabel}
-              </span>
+              <div className="score-ring" aria-label={`${t.readiness}: ${readiness}%`}>
+                <span>{readiness}%</span>
+                <small>{t.readinessIndex}</small>
+              </div>
             </div>
 
-            <div className="dashboard-grid">
-              <article className="stat-card">
-                <span>{t.points}</span>
-                <strong>{dashboardStats.points}</strong>
-                <small>{dashboardStats.completedLevels}/{dashboardStats.levelCount} {t.level}</small>
-              </article>
-              <article className="stat-card">
-                <span>{t.progress}</span>
-                <strong>{dashboardStats.readiness}%</strong>
-                <small>
-                  {dashboardStats.completedModuleCount}/{dashboardStats.totalModules} {t.modules}
-                </small>
-              </article>
-              <article className="stat-card">
-                <span>{t.quiz}</span>
-                <strong>{dashboardStats.correctAnswers}/{dashboardStats.totalQuestions}</strong>
-                <small>{currentSubmitted ? t.pass : t.quizPending}</small>
-              </article>
-              <article className="stat-card">
-                <span>{t.labCoach}</span>
-                <strong>{dashboardStats.completedLabSteps}/{dashboardStats.totalLabSteps}</strong>
-                <small>{dashboardStats.certificateReady ? t.certificateReady : t.certificateLocked}</small>
-              </article>
-            </div>
-
-            <div className="insight-grid" aria-label={t.masteryInsights}>
+            <div className="dashboard-mini-grid">
               {dashboardInsights.map((insight) => (
-                <article className="insight-card" key={insight.id}>
-                  <div>
+                <article className="mini-stat-card" key={insight.id}>
+                  <span>
                     {insight.icon}
-                    <span>{insight.label}</span>
-                  </div>
+                    {insight.label}
+                  </span>
                   <strong>{insight.value}</strong>
                   <span className="mini-progress" aria-hidden="true">
                     <span style={{ width: `${insight.percent}%` }} />
@@ -1860,542 +1818,469 @@ export default function LearningApp() {
               ))}
             </div>
 
-            <div className="achievement-grid">
-              <div className="badge-rail" aria-label={t.badges}>
-                <span className="badge-token" data-active={completedModuleCount > 0}>
-                  <BookOpenCheck size={18} aria-hidden="true" />
-                  {t.learner}
-                </span>
-                <span className="badge-token" data-active={completedLevels >= 2}>
-                  <Medal size={18} aria-hidden="true" />
-                  {t.mastery}
-                </span>
-                <span className="badge-token" data-active={certificateReady}>
-                  <Trophy size={18} aria-hidden="true" />
-                  {t.certificate}
-                </span>
-              </div>
-
-              <div className="certificate-card" data-ready={certificateReady}>
-                <div>
-                  <span>{t.certificate}</span>
-                  <strong>{certificateReady ? t.certificateReady : t.certificateLocked}</strong>
-                  <p>{t.verifyId}: {certificateId}</p>
-                </div>
-                <button
-                  className="primary-button"
-                  disabled={!certificateReady}
-                  onClick={downloadCertificate}
-                  type="button"
-                >
-                  <Download size={18} aria-hidden="true" />
-                  {t.downloadCertificate}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="objective-section" aria-labelledby="objective-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <Target size={15} aria-hidden="true" />
-                  {t.objective}
-                </p>
-                <h2 id="objective-title">{text(activeLevel.name[locale])}</h2>
-              </div>
-              {activeLevel.id === "beginner" ? (
-                <span className="pill">{t.beginnerPath}</span>
-              ) : null}
-            </div>
-            <p>{text(activeLevel.goal[locale])}</p>
-            <div className="source-strip">
-              <BookOpenCheck size={18} aria-hidden="true" />
-              <span>{text(content.meta.sourceNote[locale])}</span>
-            </div>
-          </section>
-
-          <section className="dashboard-strip" aria-label={t.progress}>
-            <div className="dashboard-card">
-              <Clock3 size={20} aria-hidden="true" />
-              <span>{t.nextFocus}</span>
-              <strong>{nextModule ? text(nextModule.title[locale]) : t.emptyFocus}</strong>
-            </div>
-            <div className="dashboard-card">
-              <GraduationCap size={20} aria-hidden="true" />
-              <span>{t.modules}</span>
-              <strong>
-                {currentSummary?.moduleDone ?? 0}/{activeLevel.modules.length} {t.completed}
-              </strong>
-            </div>
-            <div className="dashboard-card">
-              <Trophy size={20} aria-hidden="true" />
-              <span>{t.score}</span>
-              <strong>
-                {currentSubmitted
-                  ? `${scorePercent}% - ${modulePassed ? t.pass : t.improve}`
-                  : `${answeredCurrent}/${activeModuleQuiz.length} ${t.answered}`}
-              </strong>
-            </div>
-          </section>
-
-          <section className="control-center" aria-labelledby="control-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <Gauge size={15} aria-hidden="true" />
-                  {t.moduleControl}
-                </p>
-                <h2 id="control-title">{text(activeModule.title[locale])}</h2>
-                <p>{text(activeModule.summary[locale])}</p>
-              </div>
-              <span className="status-pill" data-state={modulePassed ? "complete" : "open"}>
-                {moduleNextAction}
-              </span>
-            </div>
-
-            <div className="gate-grid" aria-label={t.certificationGate}>
+            <div className="module-gate-grid" aria-label={t.moduleControl}>
               {moduleGateCards.map((gate) => (
-                <article className="gate-card" data-state={gate.state} key={gate.id}>
+                <article className="module-gate-card" data-state={gate.state} key={gate.id}>
                   <span>{gate.label}</span>
                   <strong>{gate.value}</strong>
                   <span className="mini-progress" aria-hidden="true">
                     <span style={{ width: `${gate.percent}%` }} />
                   </span>
-                  <small>{gate.percent}%</small>
                 </article>
               ))}
             </div>
 
-            <div className="recommendation-card">
-              <Sparkles size={18} aria-hidden="true" />
-              <div>
-                <strong>{t.nextAction}</strong>
-                <p>{moduleNextAction}</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="content-section lab-coach-section" aria-labelledby="lab-coach-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <ShieldCheck size={15} aria-hidden="true" />
-                  {t.labCoach}
-                </p>
-                <h2 id="lab-coach-title">{text(activePlaybook.title[locale])}</h2>
-                <p>{text(activePlaybook.brief[locale])}</p>
-              </div>
-              <span className="section-progress">
-                {completedLabSteps}/{activeLabSteps.length}
-              </span>
-            </div>
-
-            <div className="lab-coach-grid">
-              <div className="lab-checklist" aria-label={t.labSteps}>
-                <div className="lab-progress">
-                  <span>
-                    {labProgressPercent === 100 ? t.labComplete : t.labInProgress}
-                  </span>
-                  <strong>{labProgressPercent}%</strong>
-                  <span className="lab-progress-track" aria-hidden="true">
-                    <span style={{ width: `${labProgressPercent}%` }} />
-                  </span>
-                </div>
-
-                <ol className="lab-step-list">
-                  {activeLabSteps.map((step, stepIndex) => {
-                    const stepKey = `${activeLevel.id}:${step.id}`;
-                    const isDone = Boolean(labChecks[stepKey]);
-
-                    return (
-                      <li key={step.id}>
-                        <button
-                          className="lab-step"
-                          data-complete={isDone}
-                          type="button"
-                          aria-pressed={isDone}
-                          aria-label={isDone ? t.markStepOpen : t.markStepDone}
-                          onClick={() => toggleLabStep(step.id)}
-                        >
-                          <span className="lab-step-index" aria-hidden="true">
-                            {isDone ? (
-                              <CheckCircle2 size={18} />
-                            ) : (
-                              String(stepIndex + 1).padStart(2, "0")
-                            )}
-                          </span>
-                          <span>
-                            <strong>{text(step.title[locale])}</strong>
-                            <span>{text(step.detail[locale])}</span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-
-              <div className="command-panel" aria-label={t.commands}>
-                <div className="command-panel-header">
-                  <span>{t.commands}</span>
-                  <button className="ghost-button compact-button" type="button" onClick={resetLabSteps}>
-                    <RotateCcw size={16} aria-hidden="true" />
-                    {t.resetLab}
-                  </button>
-                </div>
-
-                {activePlaybook.commands.map((snippet) => {
-                  const commandKey = `${activeLevel.id}:${snippet.id}`;
-
-                  return (
-                    <div className="command-row" key={snippet.id}>
-                      <div>
-                        <span>{text(snippet.label[locale])}</span>
-                        <code>{snippet.command}</code>
-                      </div>
-                      <button
-                        className="secondary-button compact-button"
-                        type="button"
-                        onClick={() => copyCommand(commandKey, snippet.command)}
-                      >
-                        <ClipboardCheck size={16} aria-hidden="true" />
-                        {copiedCommandId === commandKey ? t.copied : t.copyCommand}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          <section className="content-section module-course-section" id="modules" aria-labelledby="modules-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <Layers3 size={15} aria-hidden="true" />
-                  {t.lesson}
-                </p>
-                <h2 id="modules-title">{text(activeModule.title[locale])}</h2>
-                <p>{text(activeModule.summary[locale])}</p>
-              </div>
-              <span className="section-progress">
-                {t.module} {activeModuleIndex + 1}/{activeLevel.modules.length}
-              </span>
-            </div>
-
-            <div className="course-meta-row" aria-label={t.profile}>
-              <div>
-                <span>{t.estimatedTime}</span>
-                <strong>{text(activeModule.estimatedTime[locale])}</strong>
-              </div>
-              <div>
-                <span>{t.objectives}</span>
-                <strong>{activeModule.objectives[locale].length}</strong>
-              </div>
-              <div>
-                <span>{t.moduleQuiz}</span>
-                <strong>{activeModuleQuiz.length}</strong>
-              </div>
-            </div>
-
-            <div className="course-grid">
-              <article className="course-card">
-                <span>{t.objectives}</span>
-                <ul className="key-list">
-                  {activeModule.objectives[locale].map((objective) => (
-                    <li key={objective}>{text(objective)}</li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="course-card">
-                <span>{t.prerequisites}</span>
-                <ul className="key-list">
-                  {activeModule.prerequisites[locale].map((prerequisite) => (
-                    <li key={prerequisite}>{text(prerequisite)}</li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="course-card course-card-wide">
-                <span>{t.remember}</span>
-                <ul className="key-list">
-                  {activeModule.keyPoints[locale].map((point) => (
-                    <li key={point}>{text(point)}</li>
-                  ))}
-                </ul>
-              </article>
-
-              {activeModule.lessonSections.map((section) => (
-                <article className="course-card course-card-wide" key={section.id}>
-                  <span>{t.lessonSections}</span>
-                  <h3>{text(section.title[locale])}</h3>
-                  <p>{text(section.body[locale])}</p>
-                  <ul className="key-list">
-                    {section.bullets[locale].map((bullet) => (
-                      <li key={bullet}>{text(bullet)}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-
-              <article className="course-card course-card-wide">
-                <span>{t.examples}</span>
-                <ul className="key-list">
-                  {activeModule.examples[locale].map((example) => (
-                    <li key={example}>{text(example)}</li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="course-card">
-                <span>{t.apply}</span>
-                <div className="lab-box">
-                  <strong>{t.practice}</strong>
-                  <span>{text(activeModule.practice[locale])}</span>
-                </div>
-              </article>
-
-              <article className="course-card">
-                <span>{t.fieldReview}</span>
-                <ol className="tip-list">
-                  {activeModule.tips[locale].map((tip) => (
-                    <li key={tip}>{text(tip)}</li>
-                  ))}
-                </ol>
-              </article>
-
-              <article className="course-card course-card-wide module-lab-card">
-                <div className="module-lab-head">
-                  <div>
-                    <span>{t.guidedMiniLab}</span>
-                    <h3>{text(activeModule.guidedLab.title[locale])}</h3>
-                    <p>{text(activeModule.guidedLab.objective[locale])}</p>
-                  </div>
-                  <span className="section-progress">
-                    {completedModuleLabSteps}/{activeModuleLabSteps.length}
-                  </span>
-                </div>
-
-                <div className="lab-progress module-lab-progress">
-                  <span>{moduleLabComplete ? t.labComplete : t.labInProgress}</span>
-                  <strong>{moduleLabProgressPercent}%</strong>
-                  <span className="lab-progress-track" aria-hidden="true">
-                    <span style={{ width: `${moduleLabProgressPercent}%` }} />
-                  </span>
-                </div>
-
-                <ol className="mini-lab-list interactive-mini-lab">
-                  {activeModuleLabSteps.map((step, stepIndex) => {
-                    const stepKey = `${activeModule.id}:${step.id}`;
-                    const isDone = Boolean(moduleLabChecks[stepKey]);
-
-                    return (
-                      <li key={step.id}>
-                        <button
-                          className="mini-lab-step"
-                          data-complete={isDone}
-                          type="button"
-                          aria-pressed={isDone}
-                          onClick={() => toggleModuleLabStep(step.id)}
-                        >
-                          <strong aria-hidden="true">
-                            {isDone ? <CheckCircle2 size={18} /> : String(stepIndex + 1).padStart(2, "0")}
-                          </strong>
-                          <span>
-                            <b>{text(step.title[locale])}</b>
-                            {text(step.detail[locale])}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-
-                <div className="module-lab-actions">
-                  <button className="ghost-button compact-button" type="button" onClick={resetModuleLabSteps}>
-                    <RotateCcw size={16} aria-hidden="true" />
-                    {t.resetLab}
-                  </button>
-                  <span>{t.certificationLabRule}</span>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section className="quiz-panel" id="quiz" aria-labelledby="quiz-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <ClipboardCheck size={15} aria-hidden="true" />
-                  {t.moduleQuiz}
-                </p>
-                <h2 id="quiz-title">{text(activeModule.title[locale])}</h2>
-                <p>{t.passRequired}</p>
-              </div>
-              <div className="score-card">
-                <span>{t.score}</span>
-                <strong>
-                  {currentSubmitted ? `${score}/${activeModuleQuiz.length}` : "--"}
-                </strong>
-              </div>
-            </div>
-
-            <div className="quiz-status" data-ready={unanswered === 0 && !currentSubmitted}>
-              {modulePassed ? (
-                <CheckCircle2 size={18} aria-hidden="true" />
-              ) : currentSubmitted ? (
-                <XCircle size={18} aria-hidden="true" />
-              ) : unanswered === 0 ? (
-                <CheckCircle2 size={18} aria-hidden="true" />
-              ) : (
-                <Clock3 size={18} aria-hidden="true" />
-              )}
+            <div className="dashboard-footer">
               <span>
-                {modulePassed
-                  ? t.modulePassed
-                  : currentSubmitted
-                    ? t.moduleFailed
-                    : unanswered === 0
-                      ? t.quizReady
-                      : `${unanswered} ${t.unanswered}`}
+                <Target size={15} aria-hidden="true" />
+                {t.nextFocus}: {nextModule ? text(nextModule.title[locale]) : t.emptyFocus}
               </span>
-            </div>
-
-            {currentSubmitted && !modulePassed ? (
-              <div className="feedback-card" role="status">
-                <span>{t.remediation}</span>
-                <p>{text(activeModule.failureFeedback[locale])}</p>
-                <div className="remediation-grid">
-                  {wrongAnswers.map((question) => {
-                    const selectedAnswer = answers[question.id];
-                    const selectedText =
-                      selectedAnswer === undefined
-                        ? t.noAnswer
-                        : text(question.options[locale][selectedAnswer]);
-                    const correctText = text(question.options[locale][question.answer]);
-
-                    return (
-                      <article className="remediation-item" key={question.id}>
-                        <strong>{text(question.question[locale])}</strong>
-                        <div className="answer-review">
-                          <span>{t.yourAnswer}</span>
-                          <p>{selectedText}</p>
-                        </div>
-                        <div className="answer-review" data-correct="true">
-                          <span>{t.correctAnswer}</span>
-                          <p>{correctText}</p>
-                        </div>
-                        <small>{text(question.explanation[locale])}</small>
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {activeModuleQuiz.map((question, questionIndex) => (
-              <div className="question" key={question.id}>
-                <p className="question-title">
-                  {questionIndex + 1}. {text(question.question[locale])}
-                </p>
-                <div className="answers">
-                  {question.options[locale].map((option, optionIndex) => {
-                    const state = getAnswerState(
-                      answers[question.id],
-                      currentSubmitted,
-                      optionIndex,
-                      question.answer
-                    );
-                    const isPressed = answers[question.id] === optionIndex;
-
-                    return (
-                      <button
-                        className="answer"
-                        data-state={state}
-                        aria-pressed={isPressed}
-                        disabled={currentSubmitted}
-                        key={option}
-                        onClick={() => selectAnswer(question.id, optionIndex)}
-                        type="button"
-                      >
-                        <span className="answer-mark" aria-hidden="true">
-                          {state === "correct" ? (
-                            <CheckCircle2 size={17} />
-                          ) : state === "wrong" ? (
-                            <XCircle size={17} />
-                          ) : (
-                            <Circle size={17} />
-                          )}
-                        </span>
-                        <span>{text(option)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentSubmitted ? (
-                  <p className="explanation">{text(question.explanation[locale])}</p>
-                ) : null}
-              </div>
-            ))}
-
-            <div className="quiz-actions">
-              <button
-                className="primary-button"
-                disabled={unanswered > 0 || currentSubmitted}
-                onClick={submitQuiz}
-                type="button"
-              >
-                <ClipboardCheck size={18} aria-hidden="true" />
-                {t.answer}
-              </button>
-              <button
-                className="primary-button"
-                disabled={!canGoNextModule}
-                onClick={goToNextModule}
-                type="button"
-              >
-                <ChevronRight size={18} aria-hidden="true" />
-                {nextSequentialModule ? t.nextModule : t.nextLevel}
-              </button>
-              <button className="secondary-button" onClick={resetQuiz} type="button">
-                <RotateCcw size={18} aria-hidden="true" />
-                {currentSubmitted && !modulePassed ? t.retryModule : t.reset}
-              </button>
-              <button className="ghost-button" onClick={resetAllProgress} type="button">
+              <span>
+                <GraduationCap size={15} aria-hidden="true" />
+                {t.levelProgress}: {currentSummary?.progress ?? 0}%
+              </span>
+              <span>
+                <Trophy size={15} aria-hidden="true" />
+                {t.score}: {currentSubmitted ? `${score}/${activeModuleQuiz.length}` : `${answeredCurrent}/${activeModuleQuiz.length}`}
+              </span>
+              <span>
+                <FlaskConical size={15} aria-hidden="true" />
+                {t.levelLab}: {labProgressPercent}%
+              </span>
+              <button className="ghost-button compact-button" type="button" onClick={resetAllProgress}>
+                <RotateCcw size={15} aria-hidden="true" />
                 {t.resetAll}
               </button>
-              <span className="score-summary" aria-live="polite">
-                {currentSubmitted
-                  ? `${scorePercent}% - ${modulePassed ? t.pass : t.improve}`
-                  : t.lockedScore}
+            </div>
+          </section>
+          {/* ── Module Header ── */}
+          <div className="module-header fade-in" key={`header-${activeModule.id}`}>
+            <p className="eyebrow">
+              <Layers3 size={15} aria-hidden="true" />
+              {text(activeLevel.name[locale])} — {t.module} {activeModuleIndex + 1}/{activeLevel.modules.length}
+            </p>
+            <h2>{text(activeModule.title[locale])}</h2>
+            <p>{text(activeModule.summary[locale])}</p>
+
+            {/* Phase indicators */}
+            <div className="module-phases">
+              <span className="phase-step" data-done={Boolean(moduleRead[activeModule.id])} data-active={activeTab === "course"}>
+                {moduleRead[activeModule.id] ? <CheckCircle2 size={14} aria-hidden="true" /> : <BookOpen size={14} aria-hidden="true" />}
+                {t.phaseLesson}
+              </span>
+              <span className="phase-step" data-done={moduleLabDone} data-active={activeTab === "lab"}>
+                {moduleLabDone ? <CheckCircle2 size={14} aria-hidden="true" /> : <FlaskConical size={14} aria-hidden="true" />}
+                {t.phaseLab}
+              </span>
+              <span className="phase-step" data-done={moduleQuizPassed} data-active={activeTab === "quiz"}>
+                {moduleQuizPassed ? <CheckCircle2 size={14} aria-hidden="true" /> : <ClipboardCheck size={14} aria-hidden="true" />}
+                {t.phaseQuiz}
               </span>
             </div>
-          </section>
+          </div>
 
-          <section className="content-section capstone-section" aria-labelledby="capstone-title">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">
-                  <Globe2 size={15} aria-hidden="true" />
-                  {t.capstone}
-                </p>
-                <h2 id="capstone-title">{text(content.capstone.title[locale])}</h2>
+          {/* ── Tab Bar ── */}
+          <div className="tab-bar">
+            <button className="tab-button" type="button" data-active={activeTab === "course"} onClick={() => { setActiveTab("course"); setModuleRead((c) => ({ ...c, [activeModule.id]: true })); }}>
+              <BookOpen size={16} aria-hidden="true" />
+              {t.courseTab}
+            </button>
+            <button className="tab-button" type="button" data-active={activeTab === "lab"} onClick={() => setActiveTab("lab")}>
+              <FlaskConical size={16} aria-hidden="true" />
+              {t.labTab}
+            </button>
+            <button className="tab-button" type="button" data-active={activeTab === "quiz"} onClick={() => setActiveTab("quiz")}>
+              <ClipboardCheck size={16} aria-hidden="true" />
+              {t.quizTab}
+            </button>
+          </div>
+
+          {/* ── Tab Content ── */}
+          <div className="tab-content" key={`${activeModule.id}-${activeTab}`}>
+
+            {/* ══════ COURSE TAB ══════ */}
+            {activeTab === "course" && activeModuleDetail && (
+              <div className="fade-in">
+                {/* Overview */}
+                <div className="content-block">
+                  <h3><BookOpen size={20} aria-hidden="true" /> {t.overviewTitle}</h3>
+                  <p>{text(activeModule.summary[locale])}</p>
+                  {activeModuleDetail.estimatedTime && (
+                    <div className="highlight-box">
+                      <strong>{t.estimatedTime}: </strong>{text(activeModuleDetail.estimatedTime[locale])}
+                    </div>
+                  )}
+                </div>
+
+                {/* Learning Objectives */}
+                {activeModuleDetail.objectives && (
+                  <div className="content-block">
+                    <h3><Target size={20} aria-hidden="true" /> {t.whatYouWillLearn}</h3>
+                    <ol>
+                      {activeModuleDetail.objectives[locale].map((obj, i) => (
+                        <li key={i}>{text(obj)}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Prerequisites */}
+                {activeModuleDetail.prerequisites && (
+                  <div className="content-block">
+                    <h3><AlertCircle size={20} aria-hidden="true" /> {t.beforeYouStart}</h3>
+                    <ul>
+                      {activeModuleDetail.prerequisites[locale].map((pre, i) => (
+                        <li key={i}>{text(pre)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Lesson Sections */}
+                {activeModuleDetail.lessonSections?.map((section) => (
+                  <div className="content-block section-lesson" key={section.id}>
+                    <h3>{text(section.title[locale])}</h3>
+                    <p>{text(section.body[locale])}</p>
+                    {section.bullets && (
+                      <ul>
+                        {section.bullets[locale].map((bullet, i) => (
+                          <li key={i}>{text(bullet)}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+
+                {/* Key Points */}
+                {activeModule.keyPoints && (
+                  <div className="content-block">
+                    <h3><Star size={20} aria-hidden="true" /> {t.keyTakeaways}</h3>
+                    <div className="highlight-box green">
+                      <ul>
+                        {activeModule.keyPoints[locale].map((point, i) => (
+                          <li key={i}>{text(point)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Examples */}
+                {activeModuleDetail.examples && (
+                  <div className="content-block">
+                    <h3><Lightbulb size={20} aria-hidden="true" /> {t.realWorldExamples}</h3>
+                    <ul>
+                      {activeModuleDetail.examples[locale].map((example, i) => (
+                        <li key={i}>{text(example)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Practice */}
+                {activeModule.practice && (
+                  <div className="content-block">
+                    <h3><Terminal size={20} aria-hidden="true" /> {t.practiceExercise}</h3>
+                    <div className="highlight-box amber">
+                      <p style={{ margin: 0 }}>{text(activeModule.practice[locale])}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Field Tips */}
+                {activeModule.tips && (
+                  <div className="content-block">
+                    <h3><MessageCircle size={20} aria-hidden="true" /> {t.fieldTips}</h3>
+                    <ul>
+                      {activeModule.tips[locale].map((tip, i) => (
+                        <li key={i}>{text(tip)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Continue to Lab button */}
+                <button className="next-step-button" type="button" onClick={() => setActiveTab("lab")}>
+                  <FlaskConical size={18} aria-hidden="true" />
+                  {t.continueToLab}
+                </button>
               </div>
-              <span className="pill">{t.checkpoint}</span>
-            </div>
-            <p>{text(content.capstone.brief[locale])}</p>
-            <h3>{t.deliverables}</h3>
-            <ul className="deliverable-list">
-              {content.capstone.deliverables[locale].map((deliverable) => (
-                <li key={deliverable}>
-                  <CheckCircle2 size={17} aria-hidden="true" />
-                  <span>{text(deliverable)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+            )}
+
+            {/* ══════ LAB TAB ══════ */}
+            {activeTab === "lab" && (
+              <div className="fade-in">
+                {/* Module Mini-Lab */}
+                {activeModuleDetail?.guidedLab && (
+                  <div className="content-block">
+                    <h3><FlaskConical size={20} aria-hidden="true" /> {t.guidedMiniLab}: {text(activeModuleDetail.guidedLab.title[locale])}</h3>
+                    <div className="highlight-box">
+                      <strong>{t.labObjective}: </strong>{text(activeModuleDetail.guidedLab.objective[locale])}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                      {activeModuleDetail.guidedLab.steps.map((step, stepIndex) => {
+                        const stepKey = `${activeModule.id}:${step.id}`;
+                        const isDone = Boolean(moduleLabChecks[stepKey]);
+
+                        return (
+                          <div className="lab-step" data-complete={isDone} key={stepKey}>
+                            <span className="lab-step-index">{isDone ? <CheckCircle2 size={14} /> : stepIndex + 1}</span>
+                            <span>
+                              <strong>{text(step.title[locale])}</strong>
+                              <span>{text(step.detail[locale])}</span>
+                            </span>
+                            <button className="compact-button" type="button" onClick={() => toggleModuleLabStep(step.id)}>
+                              {isDone ? t.markStepOpen : t.markStepDone}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {moduleLabDone && (
+                      <div className="success-banner" style={{ marginTop: 16 }}>
+                        <CheckCircle2 size={20} />
+                        <div>
+                          <strong>{t.labComplete}</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    <button className="ghost-button compact-button" type="button" onClick={resetModuleLabSteps}>
+                      <RotateCcw size={15} aria-hidden="true" />
+                      {t.resetLab}
+                    </button>
+                  </div>
+                )}
+
+                {/* Level Lab Playbook */}
+                {activeLab && (
+                  <div className="content-block">
+                    <h3><BookOpen size={20} aria-hidden="true" /> {t.labRunbook}: {text(activeLab.title[locale])}</h3>
+
+                    <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+                      {activeLab.steps.map((step, stepIndex) => {
+                        const stepKey = `${activeLevel.id}:${step.id}`;
+                        const isDone = Boolean(labChecks[stepKey]);
+
+                        return (
+                          <div className="lab-step" data-complete={isDone} key={stepKey}>
+                            <span className="lab-step-index">{isDone ? <CheckCircle2 size={14} /> : stepIndex + 1}</span>
+                            <span>
+                              <strong>{text(step.title[locale])}</strong>
+                              <span>{text(step.detail[locale])}</span>
+                            </span>
+                            <button className="compact-button" type="button" onClick={() => toggleLabStep(step.id)}>
+                              {isDone ? t.markStepOpen : t.markStepDone}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button className="ghost-button compact-button" type="button" onClick={resetLabSteps}>
+                      <RotateCcw size={15} aria-hidden="true" />
+                      {t.resetLab}
+                    </button>
+                  </div>
+                )}
+
+                {/* Commands */}
+                {activeLab?.commands && activeLab.commands.length > 0 && (
+                  <div className="content-block">
+                    <h3><Terminal size={20} aria-hidden="true" /> {t.commands}</h3>
+                    <div className="command-panel">
+                      {activeLab.commands.map((cmd) => (
+                        <div className="command-row" key={cmd.id}>
+                          <div>
+                            <span>{text(cmd.label[locale])}</span>
+                            <code>{cmd.command}</code>
+                          </div>
+                          <button
+                            className="compact-button"
+                            type="button"
+                            onClick={() => copyCommand(`${activeLevel.id}:${cmd.id}`, cmd.command)}
+                          >
+                            {copiedCommandId === `${activeLevel.id}:${cmd.id}` ? (
+                              <><CheckCircle2 size={14} aria-hidden="true" /> {t.copied}</>
+                            ) : (
+                              <><Copy size={14} aria-hidden="true" /> {t.copyCommand}</>
+                            )}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Continue to Quiz */}
+                <button className="next-step-button" type="button" onClick={() => setActiveTab("quiz")}>
+                  <ClipboardCheck size={18} aria-hidden="true" />
+                  {t.continueToQuiz}
+                </button>
+              </div>
+            )}
+
+            {/* ══════ QUIZ TAB ══════ */}
+            {activeTab === "quiz" && (
+              <div className="fade-in">
+                {/* Success banner if passed */}
+                {moduleQuizPassed && (
+                  <div className="success-banner">
+                    <Award size={24} aria-hidden="true" />
+                    <div>
+                      <strong>{t.congratulations} {t.modulePassed}</strong>
+                      <span> — {moduleScorePercent}%</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Failed banner */}
+                {moduleQuizSubmitted && !moduleQuizPassed && (
+                  <div className="success-banner" style={{ borderColor: "rgba(224, 113, 104, 0.4)", background: "linear-gradient(135deg, #fef2f2, #fff1f2)" }}>
+                    <XCircle size={24} style={{ color: "var(--red)" }} aria-hidden="true" />
+                    <div>
+                      <strong style={{ color: "var(--red)" }}>{t.moduleFailed}</strong>
+                      <span> — {moduleScorePercent}%</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Remediation feedback */}
+                {moduleQuizSubmitted && !moduleQuizPassed && activeModuleDetail?.failureFeedback && (
+                  <div className="content-block">
+                    <h3><AlertCircle size={20} aria-hidden="true" /> {t.remediation}</h3>
+                    <div className="highlight-box amber">
+                      <p style={{ margin: 0 }}>{text(activeModuleDetail.failureFeedback[locale])}</p>
+                    </div>
+                    <p className="remediation-count">
+                      {moduleQuizQuestions.length - wrongAnswers.length}/{moduleQuizQuestions.length} {t.correctCount}
+                    </p>
+                  </div>
+                )}
+
+                {/* Quiz info bar */}
+                <div className="content-block" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <ClipboardCheck size={18} aria-hidden="true" />
+                    <strong>{t.moduleQuiz}</strong>
+                  </div>
+                  <span className="tag">{t.passRequired}</span>
+                  <span className="tag">{moduleQuizQuestions.length} {t.questionCount}</span>
+                </div>
+
+                {/* Questions */}
+                <div className="quiz-panel" id="quiz">
+                  {moduleQuizQuestions.map((q, qIndex) => {
+                    const selectedAnswer = answers[q.id];
+                    const isAnswered = selectedAnswer !== undefined;
+
+                    return (
+                      <div className="question" key={q.id}>
+                        <p className="question-title">
+                          {qIndex + 1}. {text(q.question[locale])}
+                        </p>
+                        <div className="answers">
+                          {q.options[locale].map((option, optionIndex) => {
+                            const state = getAnswerState(
+                              selectedAnswer,
+                              moduleQuizSubmitted,
+                              optionIndex,
+                              q.answer
+                            );
+
+                            return (
+                              <button
+                                className="answer"
+                                data-state={state}
+                                aria-pressed={selectedAnswer === optionIndex}
+                                disabled={moduleQuizSubmitted}
+                                key={optionIndex}
+                                type="button"
+                                onClick={() => selectAnswer(q.id, optionIndex)}
+                              >
+                                <span className="answer-mark">
+                                  {state === "correct" ? (
+                                    <CheckCircle2 size={18} aria-hidden="true" />
+                                  ) : state === "wrong" ? (
+                                    <XCircle size={18} aria-hidden="true" />
+                                  ) : optionIndex === selectedAnswer ? (
+                                    <CheckCircle2 size={18} aria-hidden="true" />
+                                  ) : (
+                                    <Circle size={18} aria-hidden="true" />
+                                  )}
+                                </span>
+                                {text(option)}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {moduleQuizSubmitted && q.explanation && (
+                          <div className="explanation">
+                            {isAnswered && selectedAnswer !== q.answer && (
+                              <p><strong>{t.yourAnswer}:</strong> {text(q.options[locale][selectedAnswer])}</p>
+                            )}
+                            <p><strong>{t.correctAnswer}:</strong> {text(q.options[locale][q.answer])}</p>
+                            <p>{text(q.explanation[locale])}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Quiz actions */}
+                  <div className="quiz-actions">
+                    {!moduleQuizSubmitted ? (
+                      <button
+                        className="primary-button"
+                        disabled={moduleQuizQuestions.some((q) => answers[q.id] === undefined)}
+                        type="button"
+                        onClick={submitModuleQuiz}
+                      >
+                        <ClipboardCheck size={17} aria-hidden="true" />
+                        {t.answer}
+                      </button>
+                    ) : (
+                      <button className="secondary-button" type="button" onClick={resetModuleQuiz}>
+                        <RotateCcw size={17} aria-hidden="true" />
+                        {t.retryModule}
+                      </button>
+                    )}
+
+                    <span className="score-summary">
+                      {moduleQuizSubmitted
+                        ? `${t.score}: ${moduleScorePercent}%`
+                        : `${moduleQuizQuestions.filter((q) => answers[q.id] !== undefined).length}/${moduleQuizQuestions.length} ${t.answered}`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Next Module button (shown when passed) */}
+                {moduleQuizPassed && canGoNextModule && (
+                  <button className="next-step-button" type="button" onClick={goToNextModule} style={{ marginTop: 16 }}>
+                    <ChevronRight size={18} aria-hidden="true" />
+                    {nextSequentialModule ? t.nextModule : t.nextLevel}
+                  </button>
+                )}
+
+                {/* Certificate section if all complete */}
+                {allModulesComplete && allLabsDone && (
+                  <section className="content-block" style={{ marginTop: 20, borderColor: "rgba(15,138,95,0.4)", background: "linear-gradient(135deg, #f0fdf6, #ecfdf5)" }}>
+                    <h3><Award size={20} aria-hidden="true" /> {certificateUnlocked ? t.certificateReady : t.certificateLocked}</h3>
+                    <p>{t.certificateRule}</p>
+                    {certificateUnlocked && (
+                      <button className="next-step-button" type="button" onClick={downloadCertificate} style={{ background: "linear-gradient(135deg, var(--green), #059669)" }}>
+                        <Download size={18} aria-hidden="true" />
+                        {t.downloadCertificate}
+                      </button>
+                    )}
+                  </section>
+                )}
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>
