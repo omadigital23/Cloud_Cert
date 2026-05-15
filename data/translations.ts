@@ -161,6 +161,10 @@ export const copy = {
     realWorldExamples: "Exemples concrets",
     practiceExercise: "Exercice pratique",
     fieldTips: "Conseils de terrain",
+    coachMethod: "Méthode guidée",
+    mentalModel: "Modèle mental",
+    commonMistakes: "Erreurs fréquentes",
+    readinessChecklist: "Checklist de maîtrise",
     // NEW — Lab
     labObjective: "Objectif du lab",
     labProgress: "Progression du lab",
@@ -340,6 +344,10 @@ export const copy = {
     realWorldExamples: "Real-world examples",
     practiceExercise: "Practice exercise",
     fieldTips: "Field tips",
+    coachMethod: "Guided method",
+    mentalModel: "Mental model",
+    commonMistakes: "Common mistakes",
+    readinessChecklist: "Readiness checklist",
     // NEW — Lab
     labObjective: "Lab objective",
     labProgress: "Lab progress",

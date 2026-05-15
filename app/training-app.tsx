@@ -40,6 +40,7 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { content } from "../data/courses";
 import type { CourseModule as Module, LabStep, Level, Locale, Localized } from "../data/course-types";
+import { pedagogyGuides } from "../data/pedagogy";
 import { moduleQuizBank } from "../data/quizzes";
 import { copy } from "../data/translations";
 import { createClient, hasSupabaseConfig } from "../lib/supabase/client";
@@ -734,6 +735,7 @@ export default function LearningApp() {
   const moduleQuizQuestions = activeModuleQuiz;
   const moduleLabDone = moduleLabComplete;
   const activeModuleDetail = activeModule;
+  const activePedagogy = pedagogyGuides[activeModule.id];
   const activeLab = labPlaybooks[activeLevel.id] ?? null;
 
   const totalModules = content.levels.reduce((total, level) => total + level.modules.length, 0);
@@ -1950,6 +1952,46 @@ export default function LearningApp() {
                     )}
                   </div>
                 ))}
+
+                {activePedagogy && (
+                  <div className="content-block pedagogy-block">
+                    <h3><GraduationCap size={20} aria-hidden="true" /> {t.coachMethod}</h3>
+                    <div className="pedagogy-grid">
+                      <article className="pedagogy-card span-2">
+                        <h4><Lightbulb size={16} aria-hidden="true" /> {t.mentalModel}</h4>
+                        <p>{text(activePedagogy.mentalModel[locale])}</p>
+                      </article>
+
+                      <article className="pedagogy-card scenario-card span-2">
+                        <h4><Target size={16} aria-hidden="true" /> {text(activePedagogy.scenario.title[locale])}</h4>
+                        <p>{text(activePedagogy.scenario.brief[locale])}</p>
+                        <ul>
+                          {activePedagogy.scenario.checkpoints[locale].map((checkpoint, i) => (
+                            <li key={i}>{text(checkpoint)}</li>
+                          ))}
+                        </ul>
+                      </article>
+
+                      <article className="pedagogy-card">
+                        <h4><AlertCircle size={16} aria-hidden="true" /> {t.commonMistakes}</h4>
+                        <ul>
+                          {activePedagogy.commonMistakes[locale].map((mistake, i) => (
+                            <li key={i}>{text(mistake)}</li>
+                          ))}
+                        </ul>
+                      </article>
+
+                      <article className="pedagogy-card">
+                        <h4><ClipboardCheck size={16} aria-hidden="true" /> {t.readinessChecklist}</h4>
+                        <ul>
+                          {activePedagogy.readinessChecklist[locale].map((item, i) => (
+                            <li key={i}>{text(item)}</li>
+                          ))}
+                        </ul>
+                      </article>
+                    </div>
+                  </div>
+                )}
 
                 {/* Key Points */}
                 {activeModule.keyPoints && (
