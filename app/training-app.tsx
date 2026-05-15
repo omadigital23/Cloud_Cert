@@ -95,6 +95,8 @@ type ProgressSnapshot = {
   labChecks?: Record<string, boolean>;
   levelId?: string;
   locale?: Locale;
+  moduleId?: string;
+  submittedModuleQuizzes?: Record<string, boolean>;
   submittedLevels?: Record<string, boolean>;
 };
 
@@ -123,6 +125,7 @@ type DashboardStats = {
 };
 
 const STORAGE_KEY = "cloud-cert-progress-v2";
+const MODULE_PASS_PERCENT = 70;
 
 const content = training as {
   meta: {
@@ -145,6 +148,7 @@ const copy = {
     level: "Niveau",
     duration: "Durée",
     modules: "Modules",
+    module: "Module",
     quiz: "Quiz",
     progress: "Progression",
     source: "Base du parcours",
@@ -195,6 +199,22 @@ const copy = {
     resetLab: "Réinitialiser le lab",
     labComplete: "Lab prêt",
     labInProgress: "Lab en cours",
+    lesson: "Cours",
+    moduleQuiz: "Quiz du module",
+    modulePassed: "Module réussi",
+    moduleFailed: "Score insuffisant",
+    moduleLocked: "Module verrouillé",
+    passRequired: "Réussite requise: 70%",
+    nextModule: "Module suivant",
+    nextLevel: "Niveau suivant",
+    retryModule: "Réessayer le module",
+    courseFlow: "Parcours guidé",
+    concept: "Concept",
+    remember: "À retenir",
+    apply: "À pratiquer",
+    fieldReview: "Terrain",
+    currentModule: "Module en cours",
+    completedPath: "Niveau terminé",
     signIn: "Se connecter",
     signUp: "Créer un compte",
     signOut: "Déconnexion",
@@ -241,6 +261,7 @@ const copy = {
     level: "Level",
     duration: "Duration",
     modules: "Modules",
+    module: "Module",
     quiz: "Quiz",
     progress: "Progress",
     source: "Path basis",
@@ -291,6 +312,22 @@ const copy = {
     resetLab: "Reset lab",
     labComplete: "Lab ready",
     labInProgress: "Lab in progress",
+    lesson: "Lesson",
+    moduleQuiz: "Module quiz",
+    modulePassed: "Module passed",
+    moduleFailed: "Score too low",
+    moduleLocked: "Module locked",
+    passRequired: "Required pass: 70%",
+    nextModule: "Next module",
+    nextLevel: "Next level",
+    retryModule: "Retry module",
+    courseFlow: "Guided path",
+    concept: "Concept",
+    remember: "Remember",
+    apply: "Practice",
+    fieldReview: "Field review",
+    currentModule: "Current module",
+    completedPath: "Level complete",
     signIn: "Sign in",
     signUp: "Create account",
     signOut: "Sign out",
@@ -332,6 +369,465 @@ const copy = {
     verifyId: "Certificate ID"
   }
 } as const;
+
+const moduleQuizBank: Record<string, Question[]> = {
+  "cloud-foundations": [
+    {
+      id: "cloud-foundations-q1",
+      question: {
+        fr: "Quel element sert d'unite principale pour activer des API, isoler des ressources et suivre la facturation ?",
+        en: "Which element is the main unit for enabling APIs, isolating resources, and tracking billing?"
+      },
+      options: {
+        fr: ["Folder", "Project", "Zone", "Service account"],
+        en: ["Folder", "Project", "Zone", "Service account"]
+      },
+      answer: 1,
+      explanation: {
+        fr: "Le projet Google Cloud porte les API, les ressources, les IAM bindings et la facturation.",
+        en: "The Google Cloud project carries APIs, resources, IAM bindings, and billing."
+      }
+    },
+    {
+      id: "cloud-foundations-q2",
+      question: {
+        fr: "Quel type de role IAM est le plus dangereux s'il est donne trop largement ?",
+        en: "Which IAM role type is the riskiest when granted too broadly?"
+      },
+      options: {
+        fr: ["Basic role", "Predefined role", "Custom role", "Conditional role"],
+        en: ["Basic role", "Predefined role", "Custom role", "Conditional role"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Les roles basic comme Owner et Editor donnent beaucoup de permissions. Pour la production, prefere des roles plus precis.",
+        en: "Basic roles like Owner and Editor grant many permissions. In production, prefer more specific roles."
+      }
+    },
+    {
+      id: "cloud-foundations-q3",
+      question: {
+        fr: "Quelle bonne pratique IAM doit guider les acces d'un apprenant comme d'une equipe production ?",
+        en: "Which IAM best practice should guide learner and production access?"
+      },
+      options: {
+        fr: ["Moindre privilege", "Un seul Owner pour tous", "Mots de passe dans le code", "Desactiver les logs"],
+        en: ["Least privilege", "One Owner for everyone", "Passwords in code", "Disable logs"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Le moindre privilege limite chaque identite aux permissions strictement necessaires.",
+        en: "Least privilege limits each identity to only the permissions it needs."
+      }
+    }
+  ],
+  "vpc-basics": [
+    {
+      id: "vpc-basics-q1",
+      question: {
+        fr: "Dans Google Cloud, quelle affirmation decrit correctement un VPC ?",
+        en: "In Google Cloud, which statement correctly describes a VPC?"
+      },
+      options: {
+        fr: ["Le VPC est regional", "Le VPC est global et les subnets sont regionaux", "Le VPC est une zone", "Le VPC remplace IAM"],
+        en: ["The VPC is regional", "The VPC is global and subnets are regional", "The VPC is a zone", "The VPC replaces IAM"]
+      },
+      answer: 1,
+      explanation: {
+        fr: "Le reseau VPC est global. Les sous-reseaux appartiennent a des regions.",
+        en: "The VPC network is global. Subnets belong to regions."
+      }
+    },
+    {
+      id: "vpc-basics-q2",
+      question: {
+        fr: "Pourquoi la creation d'une VM echoue si aucun VPC n'existe ?",
+        en: "Why does VM creation fail if no VPC exists?"
+      },
+      options: {
+        fr: ["La VM n'a pas d'interface reseau disponible", "Debian est indisponible", "Cloud Storage est obligatoire", "Le disque est trop petit"],
+        en: ["The VM has no available network interface", "Debian is unavailable", "Cloud Storage is mandatory", "The disk is too small"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Une VM Compute Engine a besoin d'une interface rattachee a un reseau et a un sous-reseau.",
+        en: "A Compute Engine VM needs an interface attached to a network and subnet."
+      }
+    },
+    {
+      id: "vpc-basics-q3",
+      question: {
+        fr: "Quelle regle permet le ping vers une IP externe quand le lab cree mynetwork ?",
+        en: "Which rule allows ping to an external IP when the lab creates mynetwork?"
+      },
+      options: {
+        fr: ["mynetwork-allow-ssh", "mynetwork-allow-icmp", "mynetwork-allow-rdp", "mynetwork-allow-custom"],
+        en: ["mynetwork-allow-ssh", "mynetwork-allow-icmp", "mynetwork-allow-rdp", "mynetwork-allow-custom"]
+      },
+      answer: 1,
+      explanation: {
+        fr: "Le ping utilise ICMP. La regle allow-icmp autorise ce trafic depuis Internet.",
+        en: "Ping uses ICMP. The allow-icmp rule allows that traffic from the internet."
+      }
+    }
+  ],
+  "compute-and-storage": [
+    {
+      id: "compute-and-storage-q1",
+      question: {
+        fr: "Quel service fournit des machines virtuelles configurables ?",
+        en: "Which service provides configurable virtual machines?"
+      },
+      options: {
+        fr: ["Compute Engine", "Cloud Storage", "Cloud SQL", "Cloud DNS"],
+        en: ["Compute Engine", "Cloud Storage", "Cloud SQL", "Cloud DNS"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Compute Engine fournit des VM avec machine type, disque, image, reseau et options de securite.",
+        en: "Compute Engine provides VMs with machine type, disk, image, network, and security options."
+      }
+    },
+    {
+      id: "compute-and-storage-q2",
+      question: {
+        fr: "Cloud Storage est surtout adapte a quel type de stockage ?",
+        en: "Cloud Storage is mainly suited for which storage model?"
+      },
+      options: {
+        fr: ["Stockage objet", "Base SQL relationnelle", "Regles firewall", "Secrets applicatifs"],
+        en: ["Object storage", "Relational SQL database", "Firewall rules", "Application secrets"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud Storage stocke des objets: fichiers, images, backups, archives et datasets.",
+        en: "Cloud Storage stores objects: files, images, backups, archives, and datasets."
+      }
+    },
+    {
+      id: "compute-and-storage-q3",
+      question: {
+        fr: "Quelle pratique est plus sure que mettre un mot de passe Cloud SQL dans index.php ?",
+        en: "Which practice is safer than putting a Cloud SQL password in index.php?"
+      },
+      options: {
+        fr: ["Secret Manager", "Une IP externe", "Un role Viewer", "Un snapshot schedule"],
+        en: ["Secret Manager", "An external IP", "A Viewer role", "A snapshot schedule"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Secret Manager separe les secrets du code et facilite la rotation.",
+        en: "Secret Manager separates secrets from code and makes rotation easier."
+      }
+    }
+  ],
+  "firewall-identity": [
+    {
+      id: "firewall-identity-q1",
+      question: {
+        fr: "Quel ciblage est plus robuste que des IP pour autoriser des flux entre microservices sur VM ?",
+        en: "Which targeting model is more robust than IPs for allowing flows between VM microservices?"
+      },
+      options: {
+        fr: ["Service accounts", "Noms de disque", "Regions", "Snapshots"],
+        en: ["Service accounts", "Disk names", "Regions", "Snapshots"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Les service accounts representent l'identite du workload et restent utiles quand les IP changent.",
+        en: "Service accounts represent workload identity and remain useful when IPs change."
+      }
+    },
+    {
+      id: "firewall-identity-q2",
+      question: {
+        fr: "Dans une regle ingress, quelle information decrit le service ecoute ?",
+        en: "In an ingress rule, which information describes the listening service?"
+      },
+      options: {
+        fr: ["Protocole et port", "Nom du bucket", "Taille du disque", "Project number"],
+        en: ["Protocol and port", "Bucket name", "Disk size", "Project number"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Une regle ingress autorise un protocole et un port vers une cible precise.",
+        en: "An ingress rule allows a protocol and port toward a specific target."
+      }
+    }
+  ],
+  "load-balancing-cdn-dns": [
+    {
+      id: "load-balancing-cdn-dns-q1",
+      question: {
+        fr: "Quel composant distribue le trafic vers des backends sains ?",
+        en: "Which component distributes traffic to healthy backends?"
+      },
+      options: {
+        fr: ["Load balancer", "Cloud SQL", "Secret Manager", "Snapshot"],
+        en: ["Load balancer", "Cloud SQL", "Secret Manager", "Snapshot"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Le load balancer oriente le trafic vers les backends disponibles selon les health checks.",
+        en: "The load balancer routes traffic to available backends based on health checks."
+      }
+    },
+    {
+      id: "load-balancing-cdn-dns-q2",
+      question: {
+        fr: "Quel service rapproche les contenus caches des utilisateurs ?",
+        en: "Which service brings cached content closer to users?"
+      },
+      options: {
+        fr: ["Cloud CDN", "Cloud VPN", "Cloud NAT", "Cloud IDS"],
+        en: ["Cloud CDN", "Cloud VPN", "Cloud NAT", "Cloud IDS"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud CDN met en cache le contenu edge pour reduire latence et charge backend.",
+        en: "Cloud CDN caches content at the edge to reduce latency and backend load."
+      }
+    }
+  ],
+  "gke-run-serverless": [
+    {
+      id: "gke-run-serverless-q1",
+      question: {
+        fr: "Quel service execute des conteneurs sans gerer de cluster Kubernetes ?",
+        en: "Which service runs containers without managing a Kubernetes cluster?"
+      },
+      options: {
+        fr: ["Cloud Run", "GKE Standard", "Cloud DNS", "Cloud Router"],
+        en: ["Cloud Run", "GKE Standard", "Cloud DNS", "Cloud Router"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud Run execute des conteneurs serverless avec scaling automatique.",
+        en: "Cloud Run runs serverless containers with automatic scaling."
+      }
+    },
+    {
+      id: "gke-run-serverless-q2",
+      question: {
+        fr: "Quel service est le bon choix quand il faut controler finement Kubernetes ?",
+        en: "Which service is the right choice when you need fine Kubernetes control?"
+      },
+      options: {
+        fr: ["GKE", "Cloud Storage", "Cloud CDN", "Cloud SQL"],
+        en: ["GKE", "Cloud Storage", "Cloud CDN", "Cloud SQL"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "GKE fournit Kubernetes manage avec controle des workloads, services, ingress et policies.",
+        en: "GKE provides managed Kubernetes with control over workloads, services, ingress, and policies."
+      }
+    }
+  ],
+  "hybrid-connectivity": [
+    {
+      id: "hybrid-connectivity-q1",
+      question: {
+        fr: "Quel produit cree un tunnel chiffre entre un reseau on-prem et Google Cloud ?",
+        en: "Which product creates an encrypted tunnel between on-prem and Google Cloud?"
+      },
+      options: {
+        fr: ["Cloud VPN", "Cloud CDN", "Cloud SQL", "Cloud Storage"],
+        en: ["Cloud VPN", "Cloud CDN", "Cloud SQL", "Cloud Storage"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud VPN fournit une connectivite IPsec chiffree.",
+        en: "Cloud VPN provides encrypted IPsec connectivity."
+      }
+    },
+    {
+      id: "hybrid-connectivity-q2",
+      question: {
+        fr: "Quel composant echange des routes dynamiques avec BGP ?",
+        en: "Which component exchanges dynamic routes with BGP?"
+      },
+      options: {
+        fr: ["Cloud Router", "Cloud Armor", "Cloud CDN", "Cloud SQL"],
+        en: ["Cloud Router", "Cloud Armor", "Cloud CDN", "Cloud SQL"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud Router apprend et annonce des routes avec BGP pour VPN ou Interconnect.",
+        en: "Cloud Router learns and advertises routes with BGP for VPN or Interconnect."
+      }
+    }
+  ],
+  "hybrid-dns": [
+    {
+      id: "hybrid-dns-q1",
+      question: {
+        fr: "Quel besoin justifie une configuration DNS hybride ?",
+        en: "Which need justifies hybrid DNS configuration?"
+      },
+      options: {
+        fr: ["Resoudre des noms entre on-prem et VPC", "Augmenter la RAM d'une VM", "Creer un bucket", "Changer une image disque"],
+        en: ["Resolve names between on-prem and VPC", "Increase VM RAM", "Create a bucket", "Change a disk image"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Le DNS hybride permet aux environnements connectes de resoudre les noms necessaires.",
+        en: "Hybrid DNS lets connected environments resolve the names they need."
+      }
+    },
+    {
+      id: "hybrid-dns-q2",
+      question: {
+        fr: "Quelle erreur est frequente dans un design DNS hybride ?",
+        en: "Which mistake is common in hybrid DNS design?"
+      },
+      options: {
+        fr: ["Boucles de forwarding", "Trop de labels sur VM", "Disque trop grand", "Pas de snapshot schedule"],
+        en: ["Forwarding loops", "Too many VM labels", "Disk too large", "No snapshot schedule"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Les boucles DNS provoquent delais, echecs de resolution et comportements difficiles a diagnostiquer.",
+        en: "DNS loops cause latency, resolution failures, and hard-to-diagnose behavior."
+      }
+    }
+  ],
+  "monitoring-troubleshooting": [
+    {
+      id: "monitoring-troubleshooting-q1",
+      question: {
+        fr: "Quel type de preuve aide a comprendre pourquoi un flux reseau est bloque ?",
+        en: "Which evidence helps explain why a network flow is blocked?"
+      },
+      options: {
+        fr: ["Firewall logs et routes", "Nom du navigateur", "Couleur du dashboard", "Snapshot du disque"],
+        en: ["Firewall logs and routes", "Browser name", "Dashboard color", "Disk snapshot"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Logs firewall, routes et tests de connectivite donnent une preuve exploitable.",
+        en: "Firewall logs, routes, and connectivity tests provide actionable evidence."
+      }
+    },
+    {
+      id: "monitoring-troubleshooting-q2",
+      question: {
+        fr: "Que dois-tu verifier avant d'accuser l'application ?",
+        en: "What should you verify before blaming the application?"
+      },
+      options: {
+        fr: ["DNS, routes, firewall et health checks", "La police de caractere", "Le nom du projet", "Le logo"],
+        en: ["DNS, routes, firewall, and health checks", "The font", "The project name", "The logo"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Un incident reseau se diagnostique par couches: resolution, routage, filtrage, backend.",
+        en: "A network incident is diagnosed by layers: resolution, routing, filtering, backend."
+      }
+    }
+  ],
+  "edge-security": [
+    {
+      id: "edge-security-q1",
+      question: {
+        fr: "Quel produit protege des applications HTTP(S) avec politiques WAF ?",
+        en: "Which product protects HTTP(S) applications with WAF policies?"
+      },
+      options: {
+        fr: ["Cloud Armor", "Cloud NAT", "Cloud SQL", "Cloud Storage"],
+        en: ["Cloud Armor", "Cloud NAT", "Cloud SQL", "Cloud Storage"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud Armor applique des politiques edge, y compris des regles WAF et anti-DDoS.",
+        en: "Cloud Armor applies edge policies, including WAF and anti-DDoS rules."
+      }
+    },
+    {
+      id: "edge-security-q2",
+      question: {
+        fr: "Ou places-tu idealement une protection WAF pour une application publique ?",
+        en: "Where do you ideally place WAF protection for a public application?"
+      },
+      options: {
+        fr: ["Devant le load balancer HTTP(S)", "Dans le fichier README", "Sur le disque boot", "Dans Cloud SQL"],
+        en: ["In front of the HTTP(S) load balancer", "In the README", "On the boot disk", "Inside Cloud SQL"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "La protection edge filtre avant que le trafic atteigne les backends.",
+        en: "Edge protection filters before traffic reaches backends."
+      }
+    }
+  ],
+  "egress-nat-inspection": [
+    {
+      id: "egress-nat-inspection-q1",
+      question: {
+        fr: "Quel service donne une sortie Internet aux VM privees sans IP externe ?",
+        en: "Which service gives internet egress to private VMs without external IPs?"
+      },
+      options: {
+        fr: ["Cloud NAT", "Cloud CDN", "Cloud SQL", "Cloud DNS public zone"],
+        en: ["Cloud NAT", "Cloud CDN", "Cloud SQL", "Cloud DNS public zone"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud NAT permet l'egress sortant sans exposer directement les VM.",
+        en: "Cloud NAT allows outbound egress without directly exposing VMs."
+      }
+    },
+    {
+      id: "egress-nat-inspection-q2",
+      question: {
+        fr: "Quel service aide a detecter du trafic suspect dans le reseau ?",
+        en: "Which service helps detect suspicious network traffic?"
+      },
+      options: {
+        fr: ["Cloud IDS", "Cloud Run", "Cloud Storage", "Cloud SQL"],
+        en: ["Cloud IDS", "Cloud Run", "Cloud Storage", "Cloud SQL"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Cloud IDS inspecte le trafic pour detecter des menaces et anomalies.",
+        en: "Cloud IDS inspects traffic to detect threats and anomalies."
+      }
+    }
+  ],
+  governance: [
+    {
+      id: "governance-q1",
+      question: {
+        fr: "Quel outil applique des politiques firewall a plusieurs projets ou dossiers ?",
+        en: "Which tool applies firewall policies across multiple projects or folders?"
+      },
+      options: {
+        fr: ["Hierarchical firewall policies", "Un seul tag reseau", "Un bucket public", "Une VM bastion unique"],
+        en: ["Hierarchical firewall policies", "One network tag", "A public bucket", "A single bastion VM"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Les hierarchical firewall policies permettent une gouvernance centrale a l'echelle de l'organisation.",
+        en: "Hierarchical firewall policies enable central governance at organization scale."
+      }
+    },
+    {
+      id: "governance-q2",
+      question: {
+        fr: "Quel objectif de gouvernance reduit les exceptions dangereuses ?",
+        en: "Which governance goal reduces dangerous exceptions?"
+      },
+      options: {
+        fr: ["Standards communs et audit", "Des regles manuelles partout", "Des Owner par defaut", "Pas de logs"],
+        en: ["Common standards and audit", "Manual rules everywhere", "Default Owners", "No logs"]
+      },
+      answer: 0,
+      explanation: {
+        fr: "Des standards communs, des logs et des revues regulieres reduisent les ecarts.",
+        en: "Common standards, logs, and regular reviews reduce drift."
+      }
+    }
+  ]
+};
 
 const labPlaybooks: Record<string, LabPlaybook> = {
   beginner: {
@@ -708,6 +1204,38 @@ function isLocale(value: unknown): value is Locale {
   return value === "fr" || value === "en";
 }
 
+function getModuleQuiz(module: Module) {
+  return moduleQuizBank[module.id] ?? [];
+}
+
+function getModuleScore(module: Module, answers: Record<string, number>) {
+  const quiz = getModuleQuiz(module);
+  const correct = quiz.reduce((total, question) => {
+    return total + (answers[question.id] === question.answer ? 1 : 0);
+  }, 0);
+
+  return {
+    correct,
+    percent: quiz.length > 0 ? Math.round((correct / quiz.length) * 100) : 0,
+    total: quiz.length
+  };
+}
+
+function getFirstAvailableModule(level: Level, completedModules: Record<string, boolean>) {
+  return (
+    level.modules.find((module, index) => {
+      return index === 0 || level.modules.slice(0, index).every((item) => completedModules[item.id]);
+    }) ?? level.modules[0]
+  );
+}
+
+function isModuleUnlocked(level: Level, moduleIndex: number, completedModules: Record<string, boolean>) {
+  return (
+    moduleIndex === 0 ||
+    level.modules.slice(0, moduleIndex).every((module) => completedModules[module.id])
+  );
+}
+
 function escapeSvg(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -828,9 +1356,11 @@ export default function LearningApp() {
   const supabaseConfigured = hasSupabaseConfig();
   const [locale, setLocale] = useState<Locale>("fr");
   const [levelId, setLevelId] = useState(content.levels[0].id);
+  const [moduleId, setModuleId] = useState(content.levels[0].modules[0].id);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
   const [labChecks, setLabChecks] = useState<Record<string, boolean>>({});
+  const [submittedModuleQuizzes, setSubmittedModuleQuizzes] = useState<Record<string, boolean>>({});
   const [submittedLevels, setSubmittedLevels] = useState<Record<string, boolean>>({});
   const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
   const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
@@ -855,22 +1385,31 @@ export default function LearningApp() {
     () => content.levels.find((level) => level.id === levelId) ?? content.levels[0],
     [levelId]
   );
+  const activeModule = useMemo(() => {
+    return activeLevel.modules.find((module) => module.id === moduleId) ?? activeLevel.modules[0];
+  }, [activeLevel, moduleId]);
+  const activeModuleIndex = activeLevel.modules.findIndex((module) => module.id === activeModule.id);
+  const activeModuleQuiz = useMemo(() => getModuleQuiz(activeModule), [activeModule]);
 
   const text = (value: string) => (locale === "fr" ? polishFrench(value) : value);
 
   const levelSummaries = useMemo(() => {
     return content.levels.map((level) => {
       const moduleDone = level.modules.filter((module) => completedModules[module.id]).length;
-      const answered = level.quiz.filter((question) => answers[question.id] !== undefined).length;
-      const score = level.quiz.reduce((total, question) => {
+      const moduleQuestions = level.modules.flatMap((module) => getModuleQuiz(module));
+      const answered = moduleQuestions.filter((question) => answers[question.id] !== undefined).length;
+      const score = moduleQuestions.reduce((total, question) => {
         return total + (answers[question.id] === question.answer ? 1 : 0);
       }, 0);
-      const submitted = Boolean(submittedLevels[level.id]);
-      const quizPercent = level.quiz.length > 0 ? Math.round((score / level.quiz.length) * 100) : 0;
+      const submitted = level.modules.every((module) => submittedModuleQuizzes[module.id]);
+      const quizPercent =
+        moduleQuestions.length > 0 ? Math.round((score / moduleQuestions.length) * 100) : 0;
       const modulePercent =
         level.modules.length > 0 ? Math.round((moduleDone / level.modules.length) * 100) : 0;
-      const complete = moduleDone === level.modules.length && submitted && quizPercent >= 70;
-      const progress = Math.round(modulePercent * 0.55 + (submitted ? quizPercent : answered * 10) * 0.45);
+      const complete = moduleDone === level.modules.length;
+      const answeredPercent =
+        moduleQuestions.length > 0 ? Math.round((answered / moduleQuestions.length) * 100) : 0;
+      const progress = Math.round(modulePercent * 0.7 + (submitted ? quizPercent : answeredPercent) * 0.3);
 
       return {
         answered,
@@ -884,26 +1423,36 @@ export default function LearningApp() {
         submitted
       };
     });
-  }, [answers, completedModules, submittedLevels]);
+  }, [answers, completedModules, submittedModuleQuizzes]);
 
   const currentSummary =
     levelSummaries.find((summary) => summary.id === activeLevel.id) ?? levelSummaries[0];
-  const currentSubmitted = Boolean(submittedLevels[activeLevel.id]);
-  const answeredCurrent = currentSummary?.answered ?? 0;
-  const score = currentSummary?.score ?? 0;
-  const scorePercent = currentSummary?.quizPercent ?? 0;
-  const unanswered = activeLevel.quiz.length - answeredCurrent;
+  const currentSubmitted = Boolean(submittedModuleQuizzes[activeModule.id]);
+  const answeredCurrent = activeModuleQuiz.filter((question) => answers[question.id] !== undefined).length;
+  const moduleScore = getModuleScore(activeModule, answers);
+  const score = moduleScore.correct;
+  const scorePercent = moduleScore.percent;
+  const unanswered = activeModuleQuiz.length - answeredCurrent;
+  const modulePassed = currentSubmitted && scorePercent >= MODULE_PASS_PERCENT;
+  const canGoNextModule = modulePassed;
 
   const totalModules = content.levels.reduce((total, level) => total + level.modules.length, 0);
   const completedModuleCount = content.levels.reduce((total, level) => {
     return total + level.modules.filter((module) => completedModules[module.id]).length;
   }, 0);
-  const totalQuestions = content.levels.reduce((total, level) => total + level.quiz.length, 0);
+  const totalQuestions = content.levels.reduce((total, level) => {
+    return total + level.modules.reduce((moduleTotal, module) => moduleTotal + getModuleQuiz(module).length, 0);
+  }, 0);
   const correctAnswers = content.levels.reduce((total, level) => {
     return (
       total +
-      level.quiz.reduce((quizTotal, question) => {
-        return quizTotal + (answers[question.id] === question.answer ? 1 : 0);
+      level.modules.reduce((moduleTotal, module) => {
+        return (
+          moduleTotal +
+          getModuleQuiz(module).reduce((quizTotal, question) => {
+            return quizTotal + (answers[question.id] === question.answer ? 1 : 0);
+          }, 0)
+        );
       }, 0)
     );
   }, 0);
@@ -911,7 +1460,10 @@ export default function LearningApp() {
     (completedModuleCount / totalModules) * 60 + (correctAnswers / totalQuestions) * 40
   );
   const completedLevels = levelSummaries.filter((summary) => summary.complete).length;
-  const nextModule = activeLevel.modules.find((module) => !completedModules[module.id]);
+  const nextSequentialModule = activeLevel.modules[activeModuleIndex + 1];
+  const nextModule = completedModules[activeModule.id]
+    ? nextSequentialModule
+    : activeModule;
   const activePlaybook = labPlaybooks[activeLevel.id] ?? labPlaybooks.beginner;
   const activeLabSteps = activePlaybook.steps;
   const completedLabSteps = activeLabSteps.filter((step) => labChecks[`${activeLevel.id}:${step.id}`]).length;
@@ -969,9 +1521,11 @@ export default function LearningApp() {
       labChecks,
       levelId,
       locale,
+      moduleId,
+      submittedModuleQuizzes,
       submittedLevels
     }),
-    [answers, completedModules, labChecks, levelId, locale, submittedLevels]
+    [answers, completedModules, labChecks, levelId, locale, moduleId, submittedModuleQuizzes, submittedLevels]
   );
   const latestSnapshotRef = useRef(currentProgressSnapshot);
   const latestPointsRef = useRef(points);
@@ -990,14 +1544,22 @@ export default function LearningApp() {
       if (rawProgress) {
         const parsed = JSON.parse(rawProgress) as ProgressSnapshot;
         const savedLevelExists = content.levels.some((level) => level.id === parsed.levelId);
+        const savedModuleExists = content.levels.some((level) => {
+          return level.modules.some((module) => module.id === parsed.moduleId);
+        });
 
         setAnswers(parsed.answers ?? {});
         setCompletedModules(parsed.completedModules ?? {});
         setLabChecks(parsed.labChecks ?? {});
+        setSubmittedModuleQuizzes(parsed.submittedModuleQuizzes ?? {});
         setSubmittedLevels(parsed.submittedLevels ?? {});
 
         if (savedLevelExists && parsed.levelId) {
           setLevelId(parsed.levelId);
+        }
+
+        if (savedModuleExists && parsed.moduleId) {
+          setModuleId(parsed.moduleId);
         }
 
         if (isLocale(parsed.locale)) {
@@ -1077,15 +1639,23 @@ export default function LearningApp() {
         const profile = data as CloudProfile;
         const savedProgress = profile.progress ?? {};
         const savedLevelExists = content.levels.some((level) => level.id === savedProgress.levelId);
+        const savedModuleExists = content.levels.some((level) => {
+          return level.modules.some((module) => module.id === savedProgress.moduleId);
+        });
 
         setCloudProfile(profile);
         setAnswers(savedProgress.answers ?? {});
         setCompletedModules(savedProgress.completedModules ?? {});
         setLabChecks(savedProgress.labChecks ?? {});
+        setSubmittedModuleQuizzes(savedProgress.submittedModuleQuizzes ?? {});
         setSubmittedLevels(savedProgress.submittedLevels ?? {});
 
         if (savedLevelExists && savedProgress.levelId) {
           setLevelId(savedProgress.levelId);
+        }
+
+        if (savedModuleExists && savedProgress.moduleId) {
+          setModuleId(savedProgress.moduleId);
         }
 
         if (isLocale(savedProgress.locale)) {
@@ -1196,10 +1766,17 @@ export default function LearningApp() {
   ]);
 
   function selectLevel(nextLevelId: string) {
-    setLevelId(nextLevelId);
+    const nextLevel = content.levels.find((level) => level.id === nextLevelId) ?? content.levels[0];
+
+    setLevelId(nextLevel.id);
+    setModuleId(getFirstAvailableModule(nextLevel, completedModules).id);
   }
 
   function selectAnswer(questionId: string, answerIndex: number) {
+    if (currentSubmitted) {
+      return;
+    }
+
     setAnswers((current) => ({
       ...current,
       [questionId]: answerIndex
@@ -1211,38 +1788,89 @@ export default function LearningApp() {
       return;
     }
 
-    setSubmittedLevels((current) => ({
+    const passed = scorePercent >= MODULE_PASS_PERCENT;
+
+    setSubmittedModuleQuizzes((current) => ({
       ...current,
-      [activeLevel.id]: true
+      [activeModule.id]: true
     }));
+    setCompletedModules((current) => {
+      const next = { ...current };
+
+      if (passed) {
+        next[activeModule.id] = true;
+      } else {
+        delete next[activeModule.id];
+      }
+
+      return next;
+    });
   }
 
   function resetQuiz() {
     const nextAnswers = { ...answers };
 
-    for (const question of activeLevel.quiz) {
+    for (const question of activeModuleQuiz) {
       delete nextAnswers[question.id];
     }
 
     setAnswers(nextAnswers);
-    setSubmittedLevels((current) => ({
-      ...current,
-      [activeLevel.id]: false
-    }));
+    setSubmittedModuleQuizzes((current) => {
+      const next = { ...current };
+
+      delete next[activeModule.id];
+
+      return next;
+    });
+    setCompletedModules((current) => {
+      const next = { ...current };
+
+      delete next[activeModule.id];
+
+      return next;
+    });
   }
 
   function resetAllProgress() {
     setAnswers({});
     setCompletedModules({});
     setLabChecks({});
+    setSubmittedModuleQuizzes({});
     setSubmittedLevels({});
+    setLevelId(content.levels[0].id);
+    setModuleId(content.levels[0].modules[0].id);
   }
 
-  function toggleModule(moduleId: string) {
-    setCompletedModules((current) => ({
-      ...current,
-      [moduleId]: !current[moduleId]
-    }));
+  function selectModule(nextModuleId: string) {
+    const moduleIndex = activeLevel.modules.findIndex((module) => module.id === nextModuleId);
+
+    if (moduleIndex < 0) {
+      return;
+    }
+
+    if (!isModuleUnlocked(activeLevel, moduleIndex, completedModules)) {
+      return;
+    }
+
+    setModuleId(nextModuleId);
+  }
+
+  function goToNextModule() {
+    if (!canGoNextModule) {
+      return;
+    }
+
+    if (nextSequentialModule) {
+      setModuleId(nextSequentialModule.id);
+      return;
+    }
+
+    const nextLevel = content.levels.find((level) => level.rank === activeLevel.rank + 1);
+
+    if (nextLevel) {
+      setLevelId(nextLevel.id);
+      setModuleId(nextLevel.modules[0].id);
+    }
   }
 
   function toggleLabStep(stepId: string) {
@@ -1673,6 +2301,40 @@ export default function LearningApp() {
               </strong>
             </div>
           </div>
+
+          <div className="module-rail" aria-label={t.courseFlow}>
+            <div className="module-rail-header">
+              <span>{t.courseFlow}</span>
+              <strong>
+                {activeModuleIndex + 1}/{activeLevel.modules.length}
+              </strong>
+            </div>
+            {activeLevel.modules.map((module, moduleIndex) => {
+              const unlocked = isModuleUnlocked(activeLevel, moduleIndex, completedModules);
+              const isActive = module.id === activeModule.id;
+              const isDone = Boolean(completedModules[module.id]);
+
+              return (
+                <button
+                  className="module-step-button"
+                  data-active={isActive}
+                  data-complete={isDone}
+                  disabled={!unlocked}
+                  key={module.id}
+                  onClick={() => selectModule(module.id)}
+                  type="button"
+                >
+                  <span className="module-step-index">
+                    {isDone ? <CheckCircle2 size={16} aria-hidden="true" /> : moduleIndex + 1}
+                  </span>
+                  <span>
+                    <strong>{text(module.title[locale])}</strong>
+                    <small>{unlocked ? (isDone ? t.modulePassed : t.currentModule) : t.moduleLocked}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </aside>
 
         <main className="main">
@@ -1852,8 +2514,8 @@ export default function LearningApp() {
               <span>{t.score}</span>
               <strong>
                 {currentSubmitted
-                  ? `${scorePercent}% - ${scorePercent >= 70 ? t.pass : t.improve}`
-                  : `${answeredCurrent}/${activeLevel.quiz.length} ${t.answered}`}
+                  ? `${scorePercent}% - ${modulePassed ? t.pass : t.improve}`
+                  : `${answeredCurrent}/${activeModuleQuiz.length} ${t.answered}`}
               </strong>
             </div>
           </section>
@@ -1951,76 +2613,52 @@ export default function LearningApp() {
             </div>
           </section>
 
-          <section className="content-section" id="modules" aria-labelledby="modules-title">
+          <section className="content-section module-course-section" id="modules" aria-labelledby="modules-title">
             <div className="section-header">
               <div>
                 <p className="eyebrow">
                   <Layers3 size={15} aria-hidden="true" />
-                  {t.modules}
+                  {t.lesson}
                 </p>
-                <h2 id="modules-title">
-                  {activeLevel.modules.length} {t.modules.toLowerCase()}
-                </h2>
+                <h2 id="modules-title">{text(activeModule.title[locale])}</h2>
+                <p>{text(activeModule.summary[locale])}</p>
               </div>
               <span className="section-progress">
-                {currentSummary?.modulePercent ?? 0}%
+                {t.module} {activeModuleIndex + 1}/{activeLevel.modules.length}
               </span>
             </div>
 
-            <div className="module-grid">
-              {activeLevel.modules.map((module) => {
-                const isDone = Boolean(completedModules[module.id]);
+            <div className="course-grid">
+              <article className="course-card course-card-wide">
+                <span>{t.concept}</span>
+                <p>{text(activeModule.summary[locale])}</p>
+              </article>
 
-                return (
-                  <article className="module-card" data-complete={isDone} key={module.id}>
-                    <div className="module-card-header">
-                      <div>
-                        <span className="module-state">
-                          {isDone ? t.moduleDone : t.moduleOpen}
-                        </span>
-                        <h3>{text(module.title[locale])}</h3>
-                      </div>
-                      <button
-                        className="icon-toggle"
-                        type="button"
-                        aria-pressed={isDone}
-                        aria-label={isDone ? t.markUndone : t.markDone}
-                        title={isDone ? t.markUndone : t.markDone}
-                        onClick={() => toggleModule(module.id)}
-                      >
-                        {isDone ? (
-                          <CheckCircle2 size={22} aria-hidden="true" />
-                        ) : (
-                          <Circle size={22} aria-hidden="true" />
-                        )}
-                      </button>
-                    </div>
-                    <p>{text(module.summary[locale])}</p>
+              <article className="course-card">
+                <span>{t.remember}</span>
+                <ul className="key-list">
+                  {activeModule.keyPoints[locale].map((point) => (
+                    <li key={point}>{text(point)}</li>
+                  ))}
+                </ul>
+              </article>
 
-                    <div className="module-meta">
-                      <span className="tag">{t.keyPoints}</span>
-                      <span className="tag tag-green">{t.practice}</span>
-                    </div>
+              <article className="course-card">
+                <span>{t.apply}</span>
+                <div className="lab-box">
+                  <strong>{t.practice}</strong>
+                  <span>{text(activeModule.practice[locale])}</span>
+                </div>
+              </article>
 
-                    <ul className="key-list">
-                      {module.keyPoints[locale].map((point) => (
-                        <li key={point}>{text(point)}</li>
-                      ))}
-                    </ul>
-
-                    <div className="lab-box">
-                      <strong>{t.practice}</strong>
-                      <span>{text(module.practice[locale])}</span>
-                    </div>
-
-                    <ol className="tip-list">
-                      {module.tips[locale].map((tip) => (
-                        <li key={tip}>{text(tip)}</li>
-                      ))}
-                    </ol>
-                  </article>
-                );
-              })}
+              <article className="course-card course-card-wide">
+                <span>{t.fieldReview}</span>
+                <ol className="tip-list">
+                  {activeModule.tips[locale].map((tip) => (
+                    <li key={tip}>{text(tip)}</li>
+                  ))}
+                </ol>
+              </article>
             </div>
           </section>
 
@@ -2029,31 +2667,41 @@ export default function LearningApp() {
               <div>
                 <p className="eyebrow">
                   <ClipboardCheck size={15} aria-hidden="true" />
-                  {t.quiz}
+                  {t.moduleQuiz}
                 </p>
-                <h2 id="quiz-title">{text(activeLevel.name[locale])}</h2>
-                <p>{t.quizIntro}</p>
+                <h2 id="quiz-title">{text(activeModule.title[locale])}</h2>
+                <p>{t.passRequired}</p>
               </div>
               <div className="score-card">
                 <span>{t.score}</span>
                 <strong>
-                  {currentSubmitted ? `${score}/${activeLevel.quiz.length}` : "--"}
+                  {currentSubmitted ? `${score}/${activeModuleQuiz.length}` : "--"}
                 </strong>
               </div>
             </div>
 
-            <div className="quiz-status" data-ready={unanswered === 0}>
-              {unanswered === 0 ? (
+            <div className="quiz-status" data-ready={unanswered === 0 && !currentSubmitted}>
+              {modulePassed ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : currentSubmitted ? (
+                <XCircle size={18} aria-hidden="true" />
+              ) : unanswered === 0 ? (
                 <CheckCircle2 size={18} aria-hidden="true" />
               ) : (
                 <Clock3 size={18} aria-hidden="true" />
               )}
               <span>
-                {unanswered === 0 ? t.quizReady : `${unanswered} ${t.unanswered}`}
+                {modulePassed
+                  ? t.modulePassed
+                  : currentSubmitted
+                    ? t.moduleFailed
+                    : unanswered === 0
+                      ? t.quizReady
+                      : `${unanswered} ${t.unanswered}`}
               </span>
             </div>
 
-            {activeLevel.quiz.map((question, questionIndex) => (
+            {activeModuleQuiz.map((question, questionIndex) => (
               <div className="question" key={question.id}>
                 <p className="question-title">
                   {questionIndex + 1}. {text(question.question[locale])}
@@ -2073,6 +2721,7 @@ export default function LearningApp() {
                         className="answer"
                         data-state={state}
                         aria-pressed={isPressed}
+                        disabled={currentSubmitted}
                         key={option}
                         onClick={() => selectAnswer(question.id, optionIndex)}
                         type="button"
@@ -2100,23 +2749,32 @@ export default function LearningApp() {
             <div className="quiz-actions">
               <button
                 className="primary-button"
-                disabled={unanswered > 0}
+                disabled={unanswered > 0 || currentSubmitted}
                 onClick={submitQuiz}
                 type="button"
               >
                 <ClipboardCheck size={18} aria-hidden="true" />
                 {t.answer}
               </button>
+              <button
+                className="primary-button"
+                disabled={!canGoNextModule}
+                onClick={goToNextModule}
+                type="button"
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+                {nextSequentialModule ? t.nextModule : t.nextLevel}
+              </button>
               <button className="secondary-button" onClick={resetQuiz} type="button">
                 <RotateCcw size={18} aria-hidden="true" />
-                {t.reset}
+                {currentSubmitted && !modulePassed ? t.retryModule : t.reset}
               </button>
               <button className="ghost-button" onClick={resetAllProgress} type="button">
                 {t.resetAll}
               </button>
               <span className="score-summary" aria-live="polite">
                 {currentSubmitted
-                  ? `${scorePercent}% - ${scorePercent >= 70 ? t.pass : t.improve}`
+                  ? `${scorePercent}% - ${modulePassed ? t.pass : t.improve}`
                   : t.lockedScore}
               </span>
             </div>
