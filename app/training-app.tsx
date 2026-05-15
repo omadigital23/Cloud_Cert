@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Award,
+  BarChart3,
   BookOpenCheck,
   CheckCircle2,
   ChevronRight,
@@ -8,18 +10,31 @@ import {
   ClipboardCheck,
   Clock3,
   Cloud,
+  Database,
+  Download,
   Gauge,
   Globe2,
   GraduationCap,
+  KeyRound,
+  Loader2,
+  LogIn,
+  LogOut,
+  Mail,
+  Medal,
   Layers3,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Target,
   Trophy,
+  UserRound,
   XCircle
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import type { FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import training from "../data/training.json";
+import { createClient, hasSupabaseConfig } from "../lib/supabase/client";
 
 type Locale = "fr" | "en";
 
@@ -81,6 +96,30 @@ type ProgressSnapshot = {
   levelId?: string;
   locale?: Locale;
   submittedLevels?: Record<string, boolean>;
+};
+
+type AuthMode = "signIn" | "signUp";
+
+type CloudProfile = {
+  certificate_issued_at: string | null;
+  display_name: string | null;
+  points: number;
+  progress: ProgressSnapshot;
+  user_id: string;
+};
+
+type DashboardStats = {
+  certificateReady: boolean;
+  completedLabSteps: number;
+  completedLevels: number;
+  completedModuleCount: number;
+  correctAnswers: number;
+  levelCount: number;
+  points: number;
+  readiness: number;
+  totalLabSteps: number;
+  totalModules: number;
+  totalQuestions: number;
 };
 
 const STORAGE_KEY = "cloud-cert-progress-v2";
@@ -155,7 +194,46 @@ const copy = {
     markStepOpen: "Remettre à faire",
     resetLab: "Réinitialiser le lab",
     labComplete: "Lab prêt",
-    labInProgress: "Lab en cours"
+    labInProgress: "Lab en cours",
+    signIn: "Se connecter",
+    signUp: "Créer un compte",
+    signOut: "Déconnexion",
+    email: "Email",
+    password: "Mot de passe",
+    fullName: "Nom complet",
+    authTitle: "Espace apprenant Cloud Cert",
+    authSubtitle:
+      "Crée ton compte, reprends tes cours sur n'importe quel appareil et télécharge ton certificat quand le parcours est terminé.",
+    continueLocal: "Continuer en mode local",
+    localMode: "Mode local",
+    cloudMode: "Session cloud",
+    cloudSync: "Synchronisation cloud",
+    cloudReady: "Sauvegardé",
+    cloudMissing: "Supabase non configuré",
+    authRequired: "Connecte-toi pour sauvegarder ta progression dans Supabase.",
+    authSwitchSignIn: "Déjà un compte ? Se connecter",
+    authSwitchSignUp: "Nouveau ? Créer un compte",
+    dashboard: "Dashboard",
+    learner: "Apprenant",
+    points: "Points",
+    badges: "Badges",
+    certificate: "Certificat",
+    downloadCertificate: "Télécharger le certificat",
+    certificateLocked: "Certificat verrouillé",
+    certificateReady: "Certificat prêt",
+    certificateRule: "Débloqué quand tous les niveaux, quiz et labs sont validés.",
+    profile: "Profil",
+    account: "Compte",
+    startLearning: "Accéder au parcours",
+    worldClass: "Norme classe mondiale",
+    supabaseVercel: "Supabase + Vercel ready",
+    saveError: "Erreur de sauvegarde",
+    welcomeBack: "Progression restaurée",
+    checkEmail: "Compte créé. Vérifie ton email si Supabase demande une confirmation.",
+    cloudHint: "Ajoute tes variables Supabase sur Vercel pour activer les comptes réels.",
+    today: "Aujourd'hui",
+    issuedTo: "Décerné à",
+    verifyId: "ID certificat"
   },
   en: {
     academy: "Cloud Cert",
@@ -212,7 +290,46 @@ const copy = {
     markStepOpen: "Mark open",
     resetLab: "Reset lab",
     labComplete: "Lab ready",
-    labInProgress: "Lab in progress"
+    labInProgress: "Lab in progress",
+    signIn: "Sign in",
+    signUp: "Create account",
+    signOut: "Sign out",
+    email: "Email",
+    password: "Password",
+    fullName: "Full name",
+    authTitle: "Cloud Cert learner workspace",
+    authSubtitle:
+      "Create an account, resume lessons on any device, and download your certificate when the path is complete.",
+    continueLocal: "Continue in local mode",
+    localMode: "Local mode",
+    cloudMode: "Cloud session",
+    cloudSync: "Cloud sync",
+    cloudReady: "Saved",
+    cloudMissing: "Supabase not configured",
+    authRequired: "Sign in to save progress in Supabase.",
+    authSwitchSignIn: "Already have an account? Sign in",
+    authSwitchSignUp: "New here? Create account",
+    dashboard: "Dashboard",
+    learner: "Learner",
+    points: "Points",
+    badges: "Badges",
+    certificate: "Certificate",
+    downloadCertificate: "Download certificate",
+    certificateLocked: "Certificate locked",
+    certificateReady: "Certificate ready",
+    certificateRule: "Unlocked when every level, quiz, and lab is completed.",
+    profile: "Profile",
+    account: "Account",
+    startLearning: "Open learning path",
+    worldClass: "World-class standard",
+    supabaseVercel: "Supabase + Vercel ready",
+    saveError: "Save error",
+    welcomeBack: "Progress restored",
+    checkEmail: "Account created. Check your email if Supabase requires confirmation.",
+    cloudHint: "Add your Supabase variables on Vercel to enable real accounts.",
+    today: "Today",
+    issuedTo: "Issued to",
+    verifyId: "Certificate ID"
   }
 } as const;
 
@@ -591,7 +708,124 @@ function isLocale(value: unknown): value is Locale {
   return value === "fr" || value === "en";
 }
 
+function escapeSvg(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatDate(locale: Locale, date = new Date()) {
+  return new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-US", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  }).format(date);
+}
+
+function buildCertificateId(userId: string | undefined, points: number) {
+  const source = `${userId ?? "local"}-${points}-${new Date().getFullYear()}`;
+  let hash = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash << 5) - hash + source.charCodeAt(index);
+    hash |= 0;
+  }
+
+  return `OMA-GC-${Math.abs(hash).toString(16).toUpperCase().padStart(8, "0")}`;
+}
+
+function buildCertificateSvg({
+  certificateId,
+  date,
+  displayName,
+  locale,
+  points,
+  readiness
+}: {
+  certificateId: string;
+  date: string;
+  displayName: string;
+  locale: Locale;
+  points: number;
+  readiness: number;
+}) {
+  const safeName = escapeSvg(displayName);
+  const title =
+    locale === "fr"
+      ? "Certificat Cloud Network Engineer"
+      : "Cloud Network Engineer Certificate";
+  const subtitle =
+    locale === "fr"
+      ? "Parcours Google Cloud validé avec labs, quiz et projet final"
+      : "Google Cloud path completed with labs, quizzes, and final project";
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07111f"/>
+      <stop offset="52%" stop-color="#0d2346"/>
+      <stop offset="100%" stop-color="#0b5c83"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff4bf"/>
+      <stop offset="48%" stop-color="#d8aa3f"/>
+      <stop offset="100%" stop-color="#8a5b13"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="32" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="1100" fill="url(#bg)"/>
+  <rect x="70" y="70" width="1460" height="960" rx="36" fill="#f8fbff" filter="url(#softShadow)"/>
+  <rect x="100" y="100" width="1400" height="900" rx="28" fill="#ffffff" stroke="#d8aa3f" stroke-width="4"/>
+  <rect x="132" y="132" width="1336" height="836" rx="18" fill="none" stroke="#dce6f2" stroke-width="2"/>
+
+  <text x="160" y="205" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="6" fill="#0d2346">OMA DIGITAL</text>
+  <g transform="translate(1180 162)">
+    <path d="M58 56h95c28 0 51-22 51-50s-23-50-51-50c-8 0-16 2-23 5C117-61 93-76 65-76 27-76-4-45-4-7c0 4 0 8 1 12-26 5-46 28-46 56 0 31 25 56 56 56h51z" transform="scale(.55) translate(92 165)" fill="#ffffff" stroke="#2563eb" stroke-width="9"/>
+    <circle cx="82" cy="66" r="13" fill="#34a853"/>
+    <circle cx="119" cy="66" r="13" fill="#fbbc05"/>
+    <circle cx="156" cy="66" r="13" fill="#ea4335"/>
+    <text x="0" y="128" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#1f2937">Google Cloud</text>
+  </g>
+
+  <text x="800" y="330" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="300" fill="#0f172a">${escapeSvg(title)}</text>
+  <text x="800" y="390" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#46566c">${escapeSvg(subtitle)}</text>
+
+  <text x="800" y="510" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="34" fill="#64748b">${locale === "fr" ? "Décerné à" : "Issued to"}</text>
+  <text x="800" y="590" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="82" font-weight="800" fill="#0d2346">${safeName}</text>
+  <rect x="460" y="630" width="680" height="3" fill="url(#gold)"/>
+
+  <g transform="translate(290 710)">
+    <rect width="270" height="116" rx="18" fill="#f6f9fd" stroke="#dce6f2"/>
+    <text x="135" y="46" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="3" fill="#64748b">POINTS</text>
+    <text x="135" y="88" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="900" fill="#0d2346">${points}</text>
+  </g>
+  <g transform="translate(665 710)">
+    <rect width="270" height="116" rx="18" fill="#f6f9fd" stroke="#dce6f2"/>
+    <text x="135" y="46" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="3" fill="#64748b">MASTERY</text>
+    <text x="135" y="88" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="900" fill="#0d2346">${readiness}%</text>
+  </g>
+  <g transform="translate(1040 710)">
+    <rect width="270" height="116" rx="18" fill="#f6f9fd" stroke="#dce6f2"/>
+    <text x="135" y="46" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="3" fill="#64748b">DATE</text>
+    <text x="135" y="88" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="900" fill="#0d2346">${escapeSvg(date)}</text>
+  </g>
+
+  <circle cx="800" cy="905" r="72" fill="url(#gold)"/>
+  <circle cx="800" cy="905" r="54" fill="#ffffff" opacity="0.92"/>
+  <text x="800" y="919" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="900" fill="#0d2346">GC</text>
+  <text x="160" y="945" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#64748b">${escapeSvg(certificateId)}</text>
+  <text x="1440" y="945" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#64748b">cloudcert.omadigital</text>
+</svg>`;
+}
+
 export default function LearningApp() {
+  const supabase = useMemo(() => createClient(), []);
+  const supabaseConfigured = hasSupabaseConfig();
   const [locale, setLocale] = useState<Locale>("fr");
   const [levelId, setLevelId] = useState(content.levels[0].id);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -600,6 +834,20 @@ export default function LearningApp() {
   const [submittedLevels, setSubmittedLevels] = useState<Record<string, boolean>>({});
   const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
   const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(!supabase);
+  const [authMode, setAuthMode] = useState<AuthMode>("signIn");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+  const [isLocalMode, setIsLocalMode] = useState(false);
+  const [cloudProfile, setCloudProfile] = useState<CloudProfile | null>(null);
+  const [hasLoadedCloudProgress, setHasLoadedCloudProgress] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
 
   const t = copy[locale];
 
@@ -669,6 +917,69 @@ export default function LearningApp() {
   const completedLabSteps = activeLabSteps.filter((step) => labChecks[`${activeLevel.id}:${step.id}`]).length;
   const labProgressPercent =
     activeLabSteps.length > 0 ? Math.round((completedLabSteps / activeLabSteps.length) * 100) : 0;
+  const totalLabSteps = content.levels.reduce((total, level) => {
+    return total + (labPlaybooks[level.id]?.steps.length ?? 0);
+  }, 0);
+  const completedTotalLabSteps = content.levels.reduce((total, level) => {
+    const playbook = labPlaybooks[level.id];
+
+    if (!playbook) {
+      return total;
+    }
+
+    return (
+      total +
+      playbook.steps.filter((step) => labChecks[`${level.id}:${step.id}`]).length
+    );
+  }, 0);
+  const points =
+    completedModuleCount * 120 +
+    correctAnswers * 80 +
+    completedTotalLabSteps * 55 +
+    completedLevels * 500 +
+    (readiness >= 90 ? 350 : 0);
+  const certificateReady =
+    completedLevels === content.levels.length &&
+    completedModuleCount === totalModules &&
+    completedTotalLabSteps === totalLabSteps &&
+    readiness >= 90;
+  const displayName =
+    cloudProfile?.display_name ||
+    authName.trim() ||
+    user?.email?.split("@")[0] ||
+    (locale === "fr" ? "Apprenant Cloud" : "Cloud Learner");
+  const certificateId = buildCertificateId(user?.id, points);
+  const dashboardStats: DashboardStats = {
+    certificateReady,
+    completedLabSteps: completedTotalLabSteps,
+    completedLevels,
+    completedModuleCount,
+    correctAnswers,
+    levelCount: content.levels.length,
+    points,
+    readiness,
+    totalLabSteps,
+    totalModules,
+    totalQuestions
+  };
+  const currentProgressSnapshot = useMemo<ProgressSnapshot>(
+    () => ({
+      answers,
+      completedModules,
+      labChecks,
+      levelId,
+      locale,
+      submittedLevels
+    }),
+    [answers, completedModules, labChecks, levelId, locale, submittedLevels]
+  );
+  const latestSnapshotRef = useRef(currentProgressSnapshot);
+  const latestPointsRef = useRef(points);
+
+  useEffect(() => {
+    latestSnapshotRef.current = currentProgressSnapshot;
+    latestPointsRef.current = points;
+  }, [currentProgressSnapshot, points]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -699,6 +1010,132 @@ export default function LearningApp() {
       setHasLoadedProgress(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setSession(data.session);
+      setUser(data.session?.user ?? null);
+      setIsSessionReady(true);
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setIsSessionReady(true);
+      setIsLocalMode(false);
+      setAuthError(null);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setCloudProfile(null);
+      setHasLoadedCloudProgress(false);
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadCloudProgress(client: SupabaseClient, currentUser: User) {
+      setCloudStatus("syncing");
+
+      const { data, error } = await client
+        .from("cloud_cert_profiles")
+        .select("user_id, display_name, progress, points, certificate_issued_at")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (!isActive) {
+        return;
+      }
+
+      if (error) {
+        setCloudStatus("error");
+        setAuthError(error.message);
+        setHasLoadedCloudProgress(true);
+        return;
+      }
+
+      if (data) {
+        const profile = data as CloudProfile;
+        const savedProgress = profile.progress ?? {};
+        const savedLevelExists = content.levels.some((level) => level.id === savedProgress.levelId);
+
+        setCloudProfile(profile);
+        setAnswers(savedProgress.answers ?? {});
+        setCompletedModules(savedProgress.completedModules ?? {});
+        setLabChecks(savedProgress.labChecks ?? {});
+        setSubmittedLevels(savedProgress.submittedLevels ?? {});
+
+        if (savedLevelExists && savedProgress.levelId) {
+          setLevelId(savedProgress.levelId);
+        }
+
+        if (isLocale(savedProgress.locale)) {
+          setLocale(savedProgress.locale);
+        }
+
+        setAuthNotice(t.welcomeBack);
+      } else {
+        const metadataName =
+          typeof currentUser.user_metadata?.display_name === "string"
+            ? currentUser.user_metadata.display_name
+            : null;
+        const display = metadataName || currentUser.email?.split("@")[0] || "Cloud learner";
+
+        const { data: inserted, error: insertError } = await client
+          .from("cloud_cert_profiles")
+          .insert({
+            display_name: display,
+            points: latestPointsRef.current,
+            progress: latestSnapshotRef.current,
+            user_id: currentUser.id
+          })
+          .select("user_id, display_name, progress, points, certificate_issued_at")
+          .single();
+
+        if (!isActive) {
+          return;
+        }
+
+        if (insertError) {
+          setCloudStatus("error");
+          setAuthError(insertError.message);
+          setHasLoadedCloudProgress(true);
+          return;
+        } else {
+          setCloudProfile(inserted as CloudProfile);
+          setCloudStatus("saved");
+        }
+      }
+
+      setHasLoadedCloudProgress(true);
+      setCloudStatus("saved");
+    }
+
+    void loadCloudProgress(supabase, user);
+
+    return () => {
+      isActive = false;
+    };
+  }, [supabase, t.welcomeBack, user]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -710,17 +1147,53 @@ export default function LearningApp() {
       return;
     }
 
-    const snapshot: ProgressSnapshot = {
-      answers,
-      completedModules,
-      labChecks,
-      levelId,
-      locale,
-      submittedLevels
-    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(currentProgressSnapshot));
+  }, [currentProgressSnapshot, hasLoadedProgress]);
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  }, [answers, completedModules, hasLoadedProgress, labChecks, levelId, locale, submittedLevels]);
+  useEffect(() => {
+    if (!supabase || !user || !hasLoadedCloudProgress) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setCloudStatus("syncing");
+
+      supabase
+        .from("cloud_cert_profiles")
+        .upsert({
+          certificate_issued_at: certificateReady
+            ? cloudProfile?.certificate_issued_at ?? new Date().toISOString()
+            : cloudProfile?.certificate_issued_at ?? null,
+          display_name: displayName,
+          points,
+          progress: currentProgressSnapshot,
+          user_id: user.id
+        })
+        .select("user_id, display_name, progress, points, certificate_issued_at")
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            setCloudStatus("error");
+            setAuthError(error.message);
+            return;
+          }
+
+          setCloudProfile(data as CloudProfile);
+          setCloudStatus("saved");
+        });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    certificateReady,
+    cloudProfile?.certificate_issued_at,
+    currentProgressSnapshot,
+    displayName,
+    hasLoadedCloudProgress,
+    points,
+    supabase,
+    user
+  ]);
 
   function selectLevel(nextLevelId: string) {
     setLevelId(nextLevelId);
@@ -817,6 +1290,268 @@ export default function LearningApp() {
     }
   }
 
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !supabaseConfigured) {
+      setAuthError(t.cloudHint);
+      return;
+    }
+
+    setIsAuthBusy(true);
+    setAuthError(null);
+    setAuthNotice(null);
+
+    const email = authEmail.trim();
+    const password = authPassword;
+
+    if (authMode === "signUp") {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        options: {
+          data: {
+            display_name: authName.trim() || email.split("@")[0]
+          }
+        },
+        password
+      });
+
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthNotice(data.session ? t.welcomeBack : t.checkEmail);
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthNotice(t.welcomeBack);
+      }
+    }
+
+    setIsAuthBusy(false);
+  }
+
+  async function signOut() {
+    if (!supabase) {
+      setIsLocalMode(false);
+      return;
+    }
+
+    setIsAuthBusy(true);
+    await supabase.auth.signOut();
+    setCloudProfile(null);
+    setHasLoadedCloudProgress(false);
+    setIsLocalMode(false);
+    setAuthNotice(null);
+    setIsAuthBusy(false);
+  }
+
+  function downloadCertificate() {
+    if (!certificateReady) {
+      return;
+    }
+
+    const issuedDate = cloudProfile?.certificate_issued_at
+      ? new Date(cloudProfile.certificate_issued_at)
+      : new Date();
+    const svg = buildCertificateSvg({
+      certificateId,
+      date: formatDate(locale, issuedDate),
+      displayName,
+      locale,
+      points,
+      readiness
+    });
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = `${certificateId}.svg`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  const cloudLabel =
+    cloudStatus === "syncing"
+      ? t.cloudSync
+      : cloudStatus === "error"
+        ? t.saveError
+        : session
+          ? t.cloudReady
+          : isLocalMode
+            ? t.localMode
+            : t.cloudMissing;
+  const authSubmitLabel = authMode === "signIn" ? t.signIn : t.signUp;
+  const authSwitchLabel = authMode === "signIn" ? t.authSwitchSignUp : t.authSwitchSignIn;
+
+  if (!session && !isLocalMode) {
+    return (
+      <div className="app-shell auth-shell">
+        <header className="topbar">
+          <div className="brand" aria-label={text(content.meta.title[locale])}>
+            <span className="brand-mark" aria-hidden="true">
+              <Cloud size={20} strokeWidth={2.5} />
+            </span>
+            <span className="brand-copy">
+              <span>{t.academy}</span>
+              <strong>{text(content.meta.title[locale])}</strong>
+            </span>
+          </div>
+
+          <div className="toolbar">
+            <span className="toolbar-label">{t.language}</span>
+            <div className="segmented" aria-label={t.language}>
+              <button
+                type="button"
+                aria-pressed={locale === "fr"}
+                data-active={locale === "fr"}
+                onClick={() => setLocale("fr")}
+              >
+                FR
+              </button>
+              <button
+                type="button"
+                aria-pressed={locale === "en"}
+                data-active={locale === "en"}
+                onClick={() => setLocale("en")}
+              >
+                EN
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="auth-layout">
+          <section className="auth-value" aria-labelledby="auth-title">
+            <p className="eyebrow">
+              <Sparkles size={15} aria-hidden="true" />
+              {t.worldClass}
+            </p>
+            <h1 id="auth-title">{t.authTitle}</h1>
+            <p className="lead">{t.authSubtitle}</p>
+
+            <div className="auth-feature-grid" aria-label={t.dashboard}>
+              <div>
+                <BarChart3 size={20} aria-hidden="true" />
+                <strong>{t.dashboard}</strong>
+                <span>{t.points} / {t.progress} / {t.quiz}</span>
+              </div>
+              <div>
+                <Database size={20} aria-hidden="true" />
+                <strong>{t.supabaseVercel}</strong>
+                <span>{supabaseConfigured ? t.cloudMode : t.cloudHint}</span>
+              </div>
+              <div>
+                <Award size={20} aria-hidden="true" />
+                <strong>{t.certificate}</strong>
+                <span>{t.certificateRule}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="auth-panel" aria-label={t.account}>
+            <div className="auth-panel-head">
+              <span className="sync-pill" data-state={supabaseConfigured ? "saved" : "error"}>
+                {supabaseConfigured ? t.cloudMode : t.cloudMissing}
+              </span>
+              <h2>{authSubmitLabel}</h2>
+              <p>{t.authRequired}</p>
+            </div>
+
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              {authMode === "signUp" ? (
+                <label>
+                  <span>{t.fullName}</span>
+                  <span className="input-shell">
+                    <UserRound size={17} aria-hidden="true" />
+                    <input
+                      autoComplete="name"
+                      value={authName}
+                      onChange={(event) => setAuthName(event.target.value)}
+                      placeholder="Oma Learner"
+                    />
+                  </span>
+                </label>
+              ) : null}
+
+              <label>
+                <span>{t.email}</span>
+                <span className="input-shell">
+                  <Mail size={17} aria-hidden="true" />
+                  <input
+                    autoComplete="email"
+                    inputMode="email"
+                    required
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    placeholder="student@omadigital.com"
+                  />
+                </span>
+              </label>
+
+              <label>
+                <span>{t.password}</span>
+                <span className="input-shell">
+                  <KeyRound size={17} aria-hidden="true" />
+                  <input
+                    autoComplete={authMode === "signIn" ? "current-password" : "new-password"}
+                    minLength={6}
+                    required
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="••••••••"
+                  />
+                </span>
+              </label>
+
+              {authError ? <p className="auth-message" data-state="error">{authError}</p> : null}
+              {authNotice ? <p className="auth-message" data-state="success">{authNotice}</p> : null}
+
+              <button className="primary-button" disabled={isAuthBusy || !supabaseConfigured || !isSessionReady} type="submit">
+                {isAuthBusy || !isSessionReady ? (
+                  <Loader2 className="spin" size={18} aria-hidden="true" />
+                ) : authMode === "signIn" ? (
+                  <LogIn size={18} aria-hidden="true" />
+                ) : (
+                  <UserRound size={18} aria-hidden="true" />
+                )}
+                {authSubmitLabel}
+              </button>
+            </form>
+
+            <div className="auth-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setAuthMode((mode) => (mode === "signIn" ? "signUp" : "signIn"));
+                  setAuthError(null);
+                  setAuthNotice(null);
+                }}
+              >
+                {authSwitchLabel}
+              </button>
+              <button className="ghost-button" type="button" onClick={() => setIsLocalMode(true)}>
+                {t.continueLocal}
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -854,6 +1589,20 @@ export default function LearningApp() {
               EN
             </button>
           </div>
+          <div className="account-chip" data-state={cloudStatus}>
+            {cloudStatus === "syncing" ? (
+              <Loader2 className="spin" size={15} aria-hidden="true" />
+            ) : session ? (
+              <ShieldCheck size={15} aria-hidden="true" />
+            ) : (
+              <Cloud size={15} aria-hidden="true" />
+            )}
+            <span>{cloudLabel}</span>
+            {session ? <strong>{displayName}</strong> : null}
+          </div>
+          <button className="icon-button" type="button" title={t.signOut} onClick={signOut}>
+            <LogOut size={18} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
@@ -969,6 +1718,88 @@ export default function LearningApp() {
                   <span>{t.labCoach}</span>
                   <strong>{labProgressPercent}%</strong>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="dashboard-panel" aria-labelledby="dashboard-title">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">
+                  <BarChart3 size={15} aria-hidden="true" />
+                  {t.dashboard}
+                </p>
+                <h2 id="dashboard-title">{displayName}</h2>
+                <p>{t.certificateRule}</p>
+              </div>
+              <span className="sync-pill" data-state={cloudStatus}>
+                {cloudStatus === "syncing" ? (
+                  <Loader2 className="spin" size={15} aria-hidden="true" />
+                ) : cloudStatus === "error" ? (
+                  <XCircle size={15} aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 size={15} aria-hidden="true" />
+                )}
+                {cloudLabel}
+              </span>
+            </div>
+
+            <div className="dashboard-grid">
+              <article className="stat-card">
+                <span>{t.points}</span>
+                <strong>{dashboardStats.points}</strong>
+                <small>{dashboardStats.completedLevels}/{dashboardStats.levelCount} {t.level}</small>
+              </article>
+              <article className="stat-card">
+                <span>{t.progress}</span>
+                <strong>{dashboardStats.readiness}%</strong>
+                <small>
+                  {dashboardStats.completedModuleCount}/{dashboardStats.totalModules} {t.modules}
+                </small>
+              </article>
+              <article className="stat-card">
+                <span>{t.quiz}</span>
+                <strong>{dashboardStats.correctAnswers}/{dashboardStats.totalQuestions}</strong>
+                <small>{currentSubmitted ? t.pass : t.quizPending}</small>
+              </article>
+              <article className="stat-card">
+                <span>{t.labCoach}</span>
+                <strong>{dashboardStats.completedLabSteps}/{dashboardStats.totalLabSteps}</strong>
+                <small>{dashboardStats.certificateReady ? t.certificateReady : t.certificateLocked}</small>
+              </article>
+            </div>
+
+            <div className="achievement-grid">
+              <div className="badge-rail" aria-label={t.badges}>
+                <span className="badge-token" data-active={completedModuleCount > 0}>
+                  <BookOpenCheck size={18} aria-hidden="true" />
+                  {t.learner}
+                </span>
+                <span className="badge-token" data-active={completedLevels >= 2}>
+                  <Medal size={18} aria-hidden="true" />
+                  {t.mastery}
+                </span>
+                <span className="badge-token" data-active={certificateReady}>
+                  <Trophy size={18} aria-hidden="true" />
+                  {t.certificate}
+                </span>
+              </div>
+
+              <div className="certificate-card" data-ready={certificateReady}>
+                <div>
+                  <span>{t.certificate}</span>
+                  <strong>{certificateReady ? t.certificateReady : t.certificateLocked}</strong>
+                  <p>{t.verifyId}: {certificateId}</p>
+                </div>
+                <button
+                  className="primary-button"
+                  disabled={!certificateReady}
+                  onClick={downloadCertificate}
+                  type="button"
+                >
+                  <Download size={18} aria-hidden="true" />
+                  {t.downloadCertificate}
+                </button>
               </div>
             </div>
           </section>
