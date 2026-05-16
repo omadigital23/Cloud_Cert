@@ -8,7 +8,11 @@ export type Localized = {
 export type LessonSection = {
   body: Localized;
   bullets: Record<Locale, string[]>;
+  codeExamples?: Record<Locale, string[]>;
+  diagram?: Localized;
+  errorScenario?: Localized;
   id: string;
+  productionNote?: Localized;
   title: Localized;
 };
 
